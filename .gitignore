@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+corpus.txt
+manifest.json
+developer_profile.json
+.DS_Store

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Debugger of You</title>
+<style>
+  :root {
+    --bg: #0d1017; --panel: #161b25; --line: #262d3a; --ink: #e6e9ef;
+    --dim: #8b93a3; --accent: #7c9cff; --bug: #ff6b6b; --style: #ffd166;
+    --arch: #06d6a0; --process: #a78bfa; --ok: #2dd4a7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { padding: 28px 32px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.3px; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .badge { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--ok);
+    border: 1px solid var(--ok); border-radius: 999px; padding: 4px 12px; }
+  .badge::before { content: "● "; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 32px 80px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--dim); margin: 34px 0 14px; }
+  .act { font-size: 11px; color: var(--accent); font-weight: 700; }
+
+  /* timeline */
+  .timeline { display: flex; gap: 4px; overflow-x: auto; padding: 8px 0 14px; }
+  .dot { flex: 0 0 auto; text-align: center; min-width: 66px; }
+  .dot .bar { height: 6px; border-radius: 3px; background: var(--accent);
+    opacity: 0.5; margin-bottom: 6px; }
+  .dot .d { font-size: 10px; color: var(--dim); }
+
+  /* pattern cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr));
+    gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; border-left: 3px solid var(--accent); }
+  .card.bug { border-left-color: var(--bug); }
+  .card.style { border-left-color: var(--style); }
+  .card.architecture { border-left-color: var(--arch); }
+  .card.process { border-left-color: var(--process); }
+  .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 6px;
+    background: #ffffff10; color: var(--dim); }
+  .card p { margin: 8px 0; font-size: 13px; color: #cfd4de; }
+  .ev { font-size: 12px; color: var(--dim); font-family: ui-monospace, monospace;
+    background: #00000030; padding: 8px 10px; border-radius: 8px; margin-top: 8px;
+    white-space: pre-wrap; }
+  .shas { font-size: 11px; color: var(--accent); font-family: ui-monospace, monospace;
+    margin-top: 8px; word-break: break-all; }
+  .span { font-size: 11px; color: var(--dim); margin-top: 6px; }
+
+  /* live check */
+  .live { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px; }
+  textarea { width: 100%; min-height: 180px; background: #0b0e14; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+    font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+  button { background: var(--accent); color: #0b0e14; border: 0; font-weight: 700;
+    padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint { color: var(--dim); font-size: 12px; }
+  .match { border: 1px solid var(--line); border-left: 3px solid var(--bug);
+    border-radius: 10px; padding: 14px; margin-top: 12px; background: #1a1016; }
+  .match.low { border-left-color: var(--dim); }
+  .match.medium { border-left-color: var(--style); }
+  .match .conf { font-size: 11px; color: var(--dim); text-transform: uppercase; }
+  .clean { color: var(--ok); padding: 14px 0; }
+  .muted { color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>The Debugger of You</h1>
+    <div class="sub">Your coding autobiography, read in one context by local Gemma&nbsp;4</div>
+  </div>
+  <div class="badge">Offline · on-device</div>
+</header>
+
+<main>
+  <h2><span class="act">ACT 1</span> &nbsp;Coding Autobiography</h2>
+  <div id="meta" class="muted">Loading profile…</div>
+  <div class="timeline" id="timeline"></div>
+  <div class="cards" id="cards"></div>
+
+  <h2><span class="act">ACT 2</span> &nbsp;Live Check — paste a new diff</h2>
+  <div class="live">
+    <textarea id="diff" placeholder="Paste `git diff` of code you're about to commit…"></textarea>
+    <div class="row">
+      <button id="run">Check against my history</button>
+      <span class="hint" id="livehint">Compares only against the cached profile — runs in seconds, fully local.</span>
+    </div>
+    <div id="results"></div>
+  </div>
+</main>
+
+<script>
+const CAT = ["bug","style","architecture","process"];
+function el(tag, cls, html){ const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
+
+async function loadProfile(){
+  try{
+    const r = await fetch('/api/profile');
+    if(!r.ok){ document.getElementById('meta').textContent = (await r.json()).error || 'No profile yet.'; return; }
+    const {profile, manifest} = await r.json();
+    renderMeta(manifest);
+    renderTimeline(manifest);
+    renderCards(profile);
+  }catch(e){ document.getElementById('meta').textContent = 'Backend not reachable: '+e; }
+}
+
+function renderMeta(m){
+  if(!m || !m.commits_total){ document.getElementById('meta').textContent=''; return; }
+  document.getElementById('meta').innerHTML =
+    `Read <b>${m.commits_kept}</b> commits (${m.corpus_tokens_est.toLocaleString()} tokens) `+
+    `spanning the full history of <code>${(m.repo||'').split('/').pop()}</code>, in a single ${ (m.budget_tokens>=1000? Math.round(m.budget_tokens/1000)+'K':m.budget_tokens) } context.`;
+}
+
+function renderTimeline(m){
+  const t = document.getElementById('timeline'); t.innerHTML='';
+  (m.kept||[]).forEach(k=>{
+    const d = el('div','dot');
+    const h = Math.max(6, Math.min(34, k.tokens/90));
+    d.appendChild(el('div','bar')); d.firstChild.style.height = h+'px';
+    d.appendChild(el('div','d', k.date.slice(5)));
+    d.title = `${k.sha} · ${k.subject}`;
+    t.appendChild(d);
+  });
+}
+
+function renderCards(p){
+  const c = document.getElementById('cards'); c.innerHTML='';
+  (p.patterns||[]).forEach(pat=>{
+    const cat = CAT.includes(pat.category)? pat.category : 'process';
+    const card = el('div','card '+cat);
+    card.appendChild(el('h3', null, pat.name));
+    const tags = el('div','tags');
+    tags.appendChild(el('span','tag', cat));
+    if(pat.severity) tags.appendChild(el('span','tag', pat.severity+' severity'));
+    tags.appendChild(el('span','tag', (pat.occurrences||[]).length+' commits'));
+    card.appendChild(tags);
+    card.appendChild(el('p', null, pat.description||''));
+    if(pat.evidence) card.appendChild(el('div','ev', pat.evidence));
+    if(pat.occurrences && pat.occurrences.length)
+      card.appendChild(el('div','shas', pat.occurrences.join('  ')));
+    if(pat.first_seen||pat.last_seen)
+      card.appendChild(el('div','span', `${pat.first_seen||'?'} → ${pat.last_seen||'?'}`));
+    c.appendChild(card);
+  });
+  if(!(p.patterns||[]).length) c.innerHTML='<span class="muted">No recurring patterns found.</span>';
+}
+
+document.getElementById('run').addEventListener('click', async ()=>{
+  const btn = document.getElementById('run');
+  const diff = document.getElementById('diff').value;
+  const res = document.getElementById('results');
+  if(!diff.trim()){ res.innerHTML='<div class="hint">Paste a diff first.</div>'; return; }
+  btn.disabled = true; btn.textContent='Checking…'; res.innerHTML='';
+  try{
+    const r = await fetch('/api/live-check', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({diff})});
+    const data = await r.json();
+    if(data.error){ res.innerHTML = '<div class="match">Error: '+data.error+'</div>'; }
+    else renderMatches(data);
+  }catch(e){ res.innerHTML = '<div class="match">Request failed: '+e+'</div>'; }
+  btn.disabled=false; btn.textContent='Check against my history';
+});
+
+function renderMatches(data){
+  const res = document.getElementById('results'); res.innerHTML='';
+  if(data.verdict) res.appendChild(el('div','hint', data.verdict));
+  if(!(data.matches||[]).length){ res.appendChild(el('div','clean','✓ No known pattern of yours matched this diff.')); return; }
+  data.matches.forEach(m=>{
+    const d = el('div','match '+(m.confidence||'high'));
+    d.appendChild(el('div','conf', (m.confidence||'')+' confidence'));
+    d.appendChild(el('h3', null, '⚠ '+m.pattern_name));
+    d.appendChild(el('p', null, m.why||''));
+    if(m.suggestion) d.appendChild(el('p', null, '→ '+m.suggestion));
+    if(m.related_shas && m.related_shas.length)
+      d.appendChild(el('div','shas', 'you did this before: '+m.related_shas.join('  ')));
+    res.appendChild(d);
+  });
+}
+
+loadProfile();
+</script>
+</body>
+</html>
