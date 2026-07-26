@@ -248,14 +248,13 @@ const CATcolorMap = {bug:"#e5484d", style:"#cf8a00", architecture:"#0e9f6e", pro
 function CATCOLOR(c){ return CATcolorMap[c]||"#3b5bff"; }
 function el(tag, cls, txt){ const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
 
-let _profile, _manifest;
+let _profile, _manifest, _author='';
 async function loadProfile(){
   if(window.__PROFILE__){ _profile=window.__PROFILE__; _manifest=window.__MANIFEST__||{}; reveal(); render(_profile,_manifest); return; }
   try{
-    const r = await fetch('/api/profile');
-    if(!r.ok){ document.getElementById('picker').textContent = (await r.json()).error || 'No profile yet.'; return; }
-    const d = await r.json(); _profile=d.profile; _manifest=d.manifest;
-    renderPicker(_manifest);
+    const d = await (await fetch('/api/repos')).json();
+    _author = d.author||'';
+    renderPicker(d.repos||[], _author);
   }catch(e){ document.getElementById('picker').textContent = 'Backend not reachable: '+e; }
 }
 function reveal(){
@@ -263,40 +262,58 @@ function reveal(){
   document.getElementById('hero').classList.remove('hidden');
   document.querySelector('main').classList.remove('hidden');
 }
-function renderPicker(m){
+function renderPicker(repos, author){
   const wrap = document.getElementById('picker'); wrap.innerHTML='';
-  const repos = m.repos || {}, per = m.per_repo || {};
   const card = el('div','picker-card');
   card.appendChild(el('div','big','Whose code are we debugging?'));
   const lead = el('div','lead');
   lead.innerHTML = 'Pick the projects to read. A mistake that shows up in <b>more than one</b> of your projects is <b>your</b> habit — not the project’s. Everything runs locally on Gemma 4, offline.';
   card.appendChild(lead);
-  const names = Object.keys(repos);
-  const selected = new Set(names);
-  if(!names.length){ card.appendChild(el('div','lead','No projects in manifest.')); }
-  names.forEach(name=>{
-    const row = el('div','proj checked');
-    row.appendChild(el('div','box','✓'));
-    row.appendChild(el('div','pname', name));
-    const c = per[name] || {};
-    row.appendChild(el('div','pmeta', c.kept!=null ? c.kept+' commits read' : ''));
+  if(!repos.length){ card.appendChild(el('div','lead','No git repos found on this machine.')); }
+  const selected = new Set();
+  repos.forEach((r, i)=>{
+    const on = i < 3;                    // default: your top 3 by authored commits
+    if(on) selected.add(r);
+    const row = el('div','proj'+(on?' checked':''));
+    row.appendChild(el('div','box', on?'✓':''));
+    row.appendChild(el('div','pname', r.name));
+    row.appendChild(el('div','pmeta', `${r.lang} · ${r.mine}/${r.commits} commits yours`));
     row.addEventListener('click', ()=>{
-      if(selected.has(name)){ selected.delete(name); row.className='proj'; }
-      else { selected.add(name); row.className='proj checked'; }
+      if(selected.has(r)){ selected.delete(r); row.className='proj'; row.querySelector('.box').textContent=''; }
+      else { selected.add(r); row.className='proj checked'; row.querySelector('.box').textContent='✓'; }
     });
     card.appendChild(row);
   });
   const btn = el('button','analyze','Analyze my coding DNA →');
-  btn.addEventListener('click', ()=>onAnalyze(selected));
+  btn.addEventListener('click', ()=>onAnalyze([...selected]));
   card.appendChild(btn);
-  card.appendChild(el('div','note','⬡ offline · on-device · 0 bytes over the network'));
+  card.appendChild(el('div','note','⬡ offline · on-device · new project sets analyze locally in a few minutes'));
   wrap.appendChild(card);
 }
-function onAnalyze(selected){
-  reveal();
-  const pats = (_profile.patterns||[]).filter(p =>
-    !(p.projects && p.projects.length) || p.projects.some(x=>selected.has(x)));
-  render({..._profile, patterns: pats}, _manifest);
+async function onAnalyze(selectedRepos){
+  const wrap = document.getElementById('picker');
+  wrap.innerHTML = '<div class="picker-card"><div class="big">Reading your code…</div>'
+    + '<div class="lead" id="progress">Starting…</div>'
+    + '<div class="note">Gemma 4, fully local. First time for a project set takes a few minutes.</div></div>';
+  try{
+    const res = await (await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({repos:selectedRepos, author:_author})})).json();
+    if(res.state==='error'){ document.getElementById('progress').textContent='Error: '+res.error; return; }
+    await pollAnalyze();
+  }catch(e){ const p=document.getElementById('progress'); if(p)p.textContent='Failed: '+e; }
+}
+async function pollAnalyze(){
+  const prog = document.getElementById('progress');
+  for(;;){
+    const s = await (await fetch('/api/analyze-status')).json();
+    if(prog) prog.textContent = s.step || s.state;
+    if(s.state==='done'){
+      const d = await (await fetch('/api/profile')).json();
+      _profile=d.profile; _manifest=d.manifest; reveal(); render(_profile,_manifest); return;
+    }
+    if(s.state==='error'){ if(prog) prog.textContent='Error: '+s.error; return; }
+    await new Promise(r=>setTimeout(r,2000));
+  }
 }
 
 function render(profile, manifest){

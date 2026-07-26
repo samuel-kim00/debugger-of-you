@@ -16,6 +16,7 @@ from pathlib import Path
 import live_check
 import commit_capstone
 import prepare_history
+import analyze
 from urllib.parse import urlparse, parse_qs
 
 
@@ -60,6 +61,10 @@ class Handler(BaseHTTPRequestHandler):
                 "manifest": json.loads(manifest_path.read_text()) if manifest_path.exists() else {},
             }
             return self._json(200, out)
+        if self.path == "/api/repos":
+            return self._json(200, {"repos": analyze.discover(), "author": analyze.default_author()})
+        if self.path == "/api/analyze-status":
+            return self._json(200, analyze.status())
         if self.path.startswith("/api/commit"):
             sha = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
             repo = _repo_for_sha(sha)
@@ -95,6 +100,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/execute-commit":
                 # Runs the model's proposed commit in a scratch repo (never the real project).
                 return self._json(200, commit_capstone.apply_commit(req.get("message", "")))
+            if self.path == "/api/analyze":
+                return self._json(200, analyze.start_analyze(req.get("repos", []), req.get("author", "")))
             self._json(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001 - surface any failure to the UI
             self._json(500, {"error": str(e)})
