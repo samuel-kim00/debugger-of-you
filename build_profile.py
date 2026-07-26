@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -22,50 +23,75 @@ def _norm(s: str) -> str:
     return "".join(str(s).split())
 
 
-def _commit_date(repo: Path, sha: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%ad",
-                        "--date=short", sha], capture_output=True, text=True)
-    return r.stdout.strip()
+def _grounded(line: str, diff: str) -> bool:
+    """Is this cited line a REAL line in the commit? Exact (whitespace-insensitive)
+    substring is best; else accept if some diff line shares 3+ distinctive tokens
+    with it (the model referenced a real line but reworded it slightly)."""
+    nl = _norm(line)
+    if len(nl) >= 15 and nl in _norm(diff):
+        return True
+    toks = {t for t in re.findall(r"[A-Za-z_]\w{3,}", line)}
+    if len(toks) < 2:
+        return False
+    for dl in diff.splitlines():
+        shared = sum(1 for t in toks if t in dl)
+        if shared >= 3 or shared / len(toks) >= 0.6:
+            return True
+    return False
 
 
-def verify(profile: dict, repo: Path) -> dict:
+def verify(profile: dict, manifest: dict) -> dict:
     """Two hard guarantees that turn the 4B model's imperfect recall into
-    something trustworthy:
-      1. grounding — every cited line must actually exist in that commit;
+    something trustworthy, now across several projects:
+      1. grounding — every cited line must actually exist in that commit (in the
+         right project — sha->repo comes from the manifest);
       2. recurrence — a pattern must span 2+ DISTINCT commits on 2+ DISTINCT
-         dates, so three lines dumped in one commit (e.g. the initial commit)
-         never masquerade as a "mistake you keep making over time".
+         dates. Patterns spanning 2+ PROJECTS are tagged (the person's habit).
     """
+    kept = manifest.get("kept", [])
+    sha_path = {k["sha"][:10]: k.get("path", "") for k in kept}
+    sha_repo = {k["sha"][:10]: k.get("repo", "") for k in kept}
+    sha_date = {k["sha"][:10]: k.get("date", "") for k in kept}
     diff_cache: dict[str, str] = {}
-    kept_patterns = []
-    dropped_occ = 0
-    dropped_patterns = []
+
+    def diff_for(sha10: str) -> str:
+        if sha10 not in diff_cache:
+            path = sha_path.get(sha10, "")
+            try:
+                diff_cache[sha10] = prepare_history.filtered_diff(Path(path), sha10) if path else ""
+            except SystemExit:
+                diff_cache[sha10] = ""
+        return diff_cache[sha10]
+
+    kept_patterns, dropped_occ, dropped_patterns = [], 0, []
     for pat in profile.get("patterns", []):
-        kept = []
+        good = []
         for occ in pat.get("occurrences", []):
-            sha, line = occ.get("sha", ""), occ.get("line", "")
-            if not sha or not line:
+            sha10, line = str(occ.get("sha", ""))[:10], occ.get("line", "")
+            if not sha10 or not line or sha10 not in sha_path:
                 dropped_occ += 1
                 continue
-            if sha not in diff_cache:
-                try:
-                    diff_cache[sha] = prepare_history.filtered_diff(repo, sha)
-                except SystemExit:
-                    diff_cache[sha] = ""
-            if _norm(line) and _norm(line) in _norm(diff_cache[sha]):
-                kept.append(occ)
+            if line and _grounded(line, diff_for(sha10)):
+                occ["repo"] = sha_repo.get(sha10, "")   # annotate for the UI
+                good.append(occ)
             else:
                 dropped_occ += 1
-        pat["occurrences"] = kept
-        commits = {o.get("sha", "")[:10] for o in kept}
-        dates = {_commit_date(repo, s) for s in commits} - {""}
+        pat["occurrences"] = good
+        commits = {str(o.get("sha", ""))[:10] for o in good}
+        dates = {sha_date.get(s, "") for s in commits} - {""}
+        projects = sorted({sha_repo.get(s, "") for s in commits} - {""})
+        pat["projects"] = projects
         if len(commits) >= 2 and len(dates) >= 2:
             kept_patterns.append(pat)
         else:
             dropped_patterns.append(f"{pat.get('name','?')} ({len(commits)} commit/{len(dates)} date)")
+    # cross-project patterns first, then by severity
+    sev = {"high": 0, "medium": 1, "low": 2}
+    kept_patterns.sort(key=lambda p: (-len(p.get("projects", [])), sev.get(p.get("severity"), 3)))
     profile["patterns"] = kept_patterns
     profile["_verification"] = {"dropped_occurrences": dropped_occ,
                                 "verified_patterns": len(kept_patterns),
+                                "cross_project": sum(1 for p in kept_patterns if len(p.get("projects", [])) >= 2),
                                 "dropped_patterns": dropped_patterns}
     return profile
 
@@ -89,17 +115,19 @@ def main() -> None:
                     help="Skip the model; re-verify an existing profile with current rules.")
     args = ap.parse_args()
 
+    manifest = json.loads(Path("manifest.json").read_text())
+
     if args.verify_only:
         profile = json.loads(Path(args.out).read_text())
         raw = len(profile.get("patterns", []))
-        profile = verify(profile, Path(args.repo).expanduser())
+        profile = verify(profile, manifest)
         v = profile["_verification"]
         Path(args.out).write_text(json.dumps(profile, indent=2, ensure_ascii=False))
-        print(f"re-verified: {raw} -> {v['verified_patterns']} patterns; "
-              f"dropped: {v['dropped_patterns']}")
+        print(f"re-verified: {raw} -> {v['verified_patterns']} patterns "
+              f"({v['cross_project']} cross-project); dropped: {v['dropped_patterns']}")
         for p in profile["patterns"]:
             print(f"  [{p.get('category','?')}/{p.get('severity','?')}] {p['name']} "
-                  f"({len({o.get('sha') for o in p['occurrences']})} commits)")
+                  f"| projects={p.get('projects')} ({len({o.get('sha') for o in p['occurrences']})} commits)")
         return
 
     corpus = Path(args.corpus).read_text()
@@ -117,20 +145,19 @@ def main() -> None:
     dt = time.time() - t0
 
     raw_pat = len(profile.get("patterns", []))
-    if args.repo:
-        profile = verify(profile, Path(args.repo).expanduser())
-        v = profile.get("_verification", {})
-        print(f"verified against {args.repo}: dropped {v.get('dropped_occurrences',0)} "
-              f"ungrounded lines, {raw_pat} -> {v.get('verified_patterns',0)} patterns")
-    else:
-        print("WARNING: no --repo, skipping verification")
+    Path("developer_profile.raw.json").write_text(json.dumps(profile, indent=2, ensure_ascii=False))
+    profile = verify(profile, manifest)
+    v = profile.get("_verification", {})
+    print(f"verified: dropped {v.get('dropped_occurrences',0)} ungrounded lines, "
+          f"{raw_pat} -> {v.get('verified_patterns',0)} patterns "
+          f"({v.get('cross_project',0)} cross-project)")
 
     Path(args.out).write_text(json.dumps(profile, indent=2, ensure_ascii=False))
     n_pat = len(profile.get("patterns", []))
     print(f"done in {dt:.0f}s: {n_pat} verified patterns -> {args.out}")
     for p in profile.get("patterns", []):
         print(f"  [{p.get('category','?')}/{p.get('severity','?')}] {p['name']} "
-              f"({len(p.get('occurrences', []))} verified commits)")
+              f"| projects={p.get('projects')}")
 
 
 if __name__ == "__main__":

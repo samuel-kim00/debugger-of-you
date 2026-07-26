@@ -7,3 +7,6 @@ demo_snapshot.html
 .DS_Store
 demo_repo/
 design_handoff.html
+developer_profile.raw.json
+corpus_single_backup.txt
+manifest_single_backup.json

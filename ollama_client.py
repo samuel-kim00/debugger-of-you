@@ -32,7 +32,9 @@ def generate(
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"num_ctx": num_ctx, "temperature": temperature},
+        # num_predict explicit and large: the profile JSON is long, and the
+        # default cut generation off mid-object on the deeper multi-repo schema.
+        "options": {"num_ctx": num_ctx, "num_predict": 16384, "temperature": temperature},
     }
     if fmt is not None:
         body["format"] = fmt
@@ -77,14 +79,28 @@ def chat_with_tools(
     return payload.get("message", {})
 
 
+def _repair(s: str) -> str:
+    import re
+    s = s.strip()
+    start, end = s.find("{"), s.rfind("}")
+    if start != -1 and end != -1:
+        s = s[start : end + 1]
+    s = re.sub(r",(\s*[}\]])", r"\1", s)   # drop trailing commas
+    return s
+
+
 def generate_json(prompt: str, schema: dict, **kwargs) -> dict:
-    """generate() constrained to a JSON schema, parsed into a dict."""
+    """generate() constrained to a JSON schema, parsed into a dict.
+
+    Grammar-constrained decoding is usually valid, but a 4B model occasionally
+    emits a malformed object; we try a light repair and, failing that, dump the
+    raw text so the run can be diagnosed without re-invoking the model."""
+    import pathlib
     raw = generate(prompt, fmt=schema, **kwargs)
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # Models occasionally wrap JSON in prose or fences; salvage the object.
-        start, end = raw.find("{"), raw.rfind("}")
-        if start != -1 and end != -1:
-            return json.loads(raw[start : end + 1])
-        raise
+    for candidate in (raw, _repair(raw)):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    pathlib.Path("/tmp/gemma_raw.json").write_text(raw)
+    raise ValueError("model returned unparseable JSON (raw saved to /tmp/gemma_raw.json)")

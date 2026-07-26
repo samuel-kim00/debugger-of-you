@@ -42,6 +42,25 @@
     color: #fff; line-height: 1; }
   .stat .lab { font-size: 12.5px; color: #a7b0d8; margin-top: 10px; text-transform: uppercase; letter-spacing: .7px; }
 
+  /* project picker landing */
+  .hidden { display: none !important; }
+  .picker { min-height: 66vh; display: flex; align-items: center; justify-content: center; padding: 56px var(--pad); }
+  .picker-card { width: 100%; max-width: 640px; }
+  .picker .big { font-size: clamp(24px,3vw,34px); font-weight: 800; letter-spacing: -.5px; margin: 0 0 10px; color: var(--ink); }
+  .picker .lead { color: var(--dim); font-size: 15px; margin: 0 0 26px; line-height: 1.6; }
+  .proj { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--line);
+    border-radius: 14px; margin-bottom: 12px; cursor: pointer; background: var(--card); box-shadow: var(--shadow); }
+  .proj.checked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+  .proj .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; }
+  .proj.checked .box { background: var(--accent); border-color: var(--accent); }
+  .proj .pname { font-weight: 700; font-size: 15.5px; }
+  .proj .pmeta { color: var(--faint); font-size: 13px; margin-left: auto; font-family: ui-monospace, monospace; }
+  .analyze { margin-top: 22px; width: 100%; padding: 16px; font-size: 16px; }
+  .picker .note { text-align: center; color: var(--faint); font-size: 12.5px; margin-top: 16px; }
+  .proj-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+    background: #ecf0ff; color: var(--accent); border: 1px solid #cdd7ff; border-radius: 7px; padding: 3px 9px; }
+
   main { width: 100%; padding: 32px var(--pad) 100px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
     color: var(--faint); margin: 56px 0 10px; font-weight: 700; }
@@ -184,9 +203,10 @@
   <div class="badge">Offline · on-device</div>
 </div></header>
 
-<section class="hero" id="hero"></section>
+<section class="picker" id="picker"></section>
+<section class="hero hidden" id="hero"></section>
 
-<main>
+<main class="hidden">
   <h2><span class="act">ACT 1</span> &nbsp;Coding Autobiography</h2>
   <div id="meta">Loading profile…</div>
 
@@ -215,14 +235,55 @@ const CATcolorMap = {bug:"#e5484d", style:"#cf8a00", architecture:"#0e9f6e", pro
 function CATCOLOR(c){ return CATcolorMap[c]||"#3b5bff"; }
 function el(tag, cls, txt){ const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
 
+let _profile, _manifest;
 async function loadProfile(){
-  if(window.__PROFILE__){ render(window.__PROFILE__, window.__MANIFEST__||{}); return; }
+  if(window.__PROFILE__){ _profile=window.__PROFILE__; _manifest=window.__MANIFEST__||{}; reveal(); render(_profile,_manifest); return; }
   try{
     const r = await fetch('/api/profile');
-    if(!r.ok){ document.getElementById('meta').textContent = (await r.json()).error || 'No profile yet.'; return; }
-    const {profile, manifest} = await r.json();
-    render(profile, manifest);
-  }catch(e){ document.getElementById('meta').textContent = 'Backend not reachable: '+e; }
+    if(!r.ok){ document.getElementById('picker').textContent = (await r.json()).error || 'No profile yet.'; return; }
+    const d = await r.json(); _profile=d.profile; _manifest=d.manifest;
+    renderPicker(_manifest);
+  }catch(e){ document.getElementById('picker').textContent = 'Backend not reachable: '+e; }
+}
+function reveal(){
+  document.getElementById('picker').classList.add('hidden');
+  document.getElementById('hero').classList.remove('hidden');
+  document.querySelector('main').classList.remove('hidden');
+}
+function renderPicker(m){
+  const wrap = document.getElementById('picker'); wrap.innerHTML='';
+  const repos = m.repos || {}, per = m.per_repo || {};
+  const card = el('div','picker-card');
+  card.appendChild(el('div','big','Whose code are we debugging?'));
+  const lead = el('div','lead');
+  lead.innerHTML = 'Pick the projects to read. A mistake that shows up in <b>more than one</b> of your projects is <b>your</b> habit — not the project’s. Everything runs locally on Gemma 4, offline.';
+  card.appendChild(lead);
+  const names = Object.keys(repos);
+  const selected = new Set(names);
+  if(!names.length){ card.appendChild(el('div','lead','No projects in manifest.')); }
+  names.forEach(name=>{
+    const row = el('div','proj checked');
+    row.appendChild(el('div','box','✓'));
+    row.appendChild(el('div','pname', name));
+    const c = per[name] || {};
+    row.appendChild(el('div','pmeta', c.kept!=null ? c.kept+' commits read' : ''));
+    row.addEventListener('click', ()=>{
+      if(selected.has(name)){ selected.delete(name); row.className='proj'; }
+      else { selected.add(name); row.className='proj checked'; }
+    });
+    card.appendChild(row);
+  });
+  const btn = el('button','analyze','Analyze my coding DNA →');
+  btn.addEventListener('click', ()=>onAnalyze(selected));
+  card.appendChild(btn);
+  card.appendChild(el('div','note','⬡ offline · on-device · 0 bytes over the network'));
+  wrap.appendChild(card);
+}
+function onAnalyze(selected){
+  reveal();
+  const pats = (_profile.patterns||[]).filter(p =>
+    !(p.projects && p.projects.length) || p.projects.some(x=>selected.has(x)));
+  render({..._profile, patterns: pats}, _manifest);
 }
 
 function render(profile, manifest){
@@ -241,8 +302,10 @@ function renderHero(p, m){
   const dates = [...shas].map(s=>shaDate[s]).filter(Boolean).sort();
   const days = dates.length>1 ? Math.round(daysBetween(dates[0], dates[dates.length-1])) : 0;
   const tokens = m && m.corpus_tokens_est ? Math.round(m.corpus_tokens_est/1000)+'K' : '?';
+  const nRepos = m && m.repos ? Object.keys(m.repos).length : 1;
   const stats = [
     {n: pats.length, l:'recurring patterns'},
+    {n: nRepos,      l:'projects analyzed'},
     {n: shas.size,   l:'commits implicated'},
     {n: days,        l:'days spanned'},
     {n: tokens,      l:'tokens · one context'},
@@ -251,7 +314,7 @@ function renderHero(p, m){
   const inn = el('div','hero-in');
   inn.appendChild(el('div','hero-eye','Offline · on-device · 0 bytes over the network'));
   const t = document.createElement('h2'); t.className='hero-title';
-  t.innerHTML = 'I read <b>every commit</b> of your history in one pass — and found the mistakes you keep repeating.';
+  t.innerHTML = 'I read <b>every commit</b> across your projects in one pass — and found the mistakes you repeat <b>everywhere</b>.';
   inn.appendChild(t);
   const sw = el('div','hero-stats');
   stats.forEach(s=>{
@@ -269,13 +332,12 @@ function countUp(el){
 }
 
 function renderMeta(m){
-  if(!m || !m.commits_total){ document.getElementById('meta').textContent=''; return; }
-  const repo = (m.repo||'').split('/').pop();
+  if(!m || !m.commits_kept){ document.getElementById('meta').textContent=''; return; }
+  const nRepos = m.repos ? Object.keys(m.repos).length : 1;
   const ctx = m.budget_tokens>=1000? Math.round(m.budget_tokens/1000)+'K' : m.budget_tokens;
   document.getElementById('meta').innerHTML =
-    `Read <b>${m.commits_kept}</b> of ${m.commits_total} commits `+
-    `(<b>${(m.corpus_tokens_est||0).toLocaleString()}</b> tokens) spanning the full history of `+
-    `<code>${repo}</code> — in a single ${ctx} context, no chunking.`;
+    `Read <b>${m.commits_kept}</b> of your commits across <b>${nRepos}</b> project${nRepos>1?'s':''} `+
+    `(<b>${(m.corpus_tokens_est||0).toLocaleString()}</b> tokens) — in a single ${ctx} context, no chunking.`;
 }
 
 // parse "sha | 2026-03-31 | subject" -> {sha,date,subject}
@@ -366,6 +428,8 @@ function renderCards(p){
     const card = el('div','card '+cat);
     card.appendChild(el('h3', null, pat.name));
     const tags = el('div','tags');
+    if((pat.projects||[]).length>=2)
+      tags.appendChild(el('span','proj-badge', '⬡ '+(pat.projects.length===2? pat.projects.join(' + ') : pat.projects.length+' projects')));
     tags.appendChild(el('span','tag cat-'+cat, cat));
     if(pat.severity) tags.appendChild(el('span','tag sev-'+pat.severity, pat.severity+' severity'));
     tags.appendChild(el('span','tag', new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha)).size+' commits'));
@@ -488,8 +552,8 @@ function openPattern(pat){
   const body = panel.querySelector('.panel-body'); body.innerHTML = '<div class="hint" style="color:#8a93a3">loading your code…</div>';
   bg.classList.add('open'); panel.classList.add('open');
   // verified lines per sha — guaranteed present in that commit, so highlight is exact
-  const lineFor = {};
-  (pat.occurrences||[]).forEach(o=>{ const p=parseOcc(o); if(p.sha && p.line) (lineFor[p.sha]=lineFor[p.sha]||[]).push(p.line); });
+  const lineFor = {}, repoFor = {};
+  (pat.occurrences||[]).forEach(o=>{ const p=parseOcc(o); if(p.sha){ if(p.line)(lineFor[p.sha]=lineFor[p.sha]||[]).push(p.line); if(o&&o.repo) repoFor[p.sha]=o.repo; } });
   const shas = [...new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha))];
   body.innerHTML='';
   shas.forEach(sha=>{
@@ -499,7 +563,9 @@ function openPattern(pat){
     code.innerHTML = '<span class="ln">…</span>'; occ.appendChild(code);
     body.appendChild(occ);
     fetch('/api/commit?sha='+encodeURIComponent(sha)).then(r=>r.json()).then(d=>{
-      if(d.subject) h.innerHTML = sha + ' <span class="subj">· '+escapeHtml(d.date||'')+' · '+escapeHtml(d.subject)+'</span>';
+      const repo = repoFor[sha.slice(0,10)]||'';
+      h.innerHTML = (repo?'<b style="color:#9db4ff">['+escapeHtml(repo)+']</b> ':'') + sha
+        + (d.subject? ' <span class="subj">· '+escapeHtml(d.date||'')+' · '+escapeHtml(d.subject)+'</span>' : '');
       renderCode(code, d.diff, lineFor[sha.slice(0,10)]||[]);
       const hot = code.querySelector('.ln.hot');   // scroll the repeat into view
       if(hot) code.scrollTop = Math.max(0, hot.offsetTop - code.clientHeight/2);

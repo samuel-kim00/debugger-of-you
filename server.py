@@ -19,10 +19,16 @@ import prepare_history
 from urllib.parse import urlparse, parse_qs
 
 
-def _repo_path():
+def _repo_for_sha(sha: str):
     m = ROOT / "manifest.json"
-    if m.exists():
-        return Path(json.loads(m.read_text()).get("repo", ""))
+    if not m.exists():
+        return None
+    data = json.loads(m.read_text())
+    for k in data.get("kept", []):
+        if str(k.get("sha", ""))[:10] == sha[:10] and k.get("path"):
+            return Path(k["path"])
+    if data.get("repo"):   # backward-compat with single-repo manifests
+        return Path(data["repo"])
     return None
 
 ROOT = Path(__file__).parent
@@ -56,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, out)
         if self.path.startswith("/api/commit"):
             sha = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
-            repo = _repo_path()
+            repo = _repo_for_sha(sha)
             if not sha or not repo or not (repo / ".git").exists():
                 return self._json(404, {"error": "no repo or sha"})
             diff = prepare_history.filtered_diff(repo, sha)

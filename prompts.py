@@ -70,18 +70,21 @@ PROFILE_SCHEMA = {
 }
 
 PROFILE_PROMPT = """You are a senior engineer writing ONE developer's "Coding \
-Autobiography" from their entire git history at once.
+Autobiography" from their entire history across SEVERAL of their projects at once.
 
-You are given many commits, oldest to newest, each as:
-  ===== COMMIT <sha> | <date> | <subject> =====
+You are given many commits from different projects, each block tagged with its \
+project, as:
+  ===== [project] COMMIT <sha> | <date> | <subject> =====
   <diff>
 
-Your job is the thing no per-commit review can do: find patterns that only \
-appear when you see MONTHS of history together.
+Your job is the thing no per-commit, single-project review can do: find patterns \
+that only appear when you see MONTHS of history across MULTIPLE projects together. \
+A mistake that recurs in DIFFERENT projects is the person's habit, not one \
+project's quirk — prioritize those most.
 
 Focus on:
 1. patterns — recurring mistakes the SAME developer makes again and again across \
-   DIFFERENT commits and dates. Report 6 to 10 SPECIFIC patterns, not 3 broad \
+   DIFFERENT commits and dates. Report 5 to 8 SPECIFIC patterns, not 3 broad \
    buckets. Split by root cause: "zero/None division in indicator math" and \
    "empty-DataFrame not guarded before access" are TWO patterns, not one \
    "data handling" pattern. For each pattern give:
