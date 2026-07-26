@@ -26,8 +26,9 @@ private codebase never leaves your machine.
 - **On-device / offline.** Your source history is private. A cloud model would
   mean shipping your entire codebase to a third party. Local Gemma 4 means it
   never leaves the laptop.
-- **Native function calling (stretch)** lets the live-check auto-write a commit
-  message that knows *why* the change relates to your past — see below.
+- **Native function calling** lets the live-check auto-write a commit message that
+  knows *why* the change relates to your past: Gemma emits an `execute_git_commit`
+  tool call citing the recurring pattern and past SHAs — see Act 3 below.
 
 ## Architecture
 
@@ -83,6 +84,7 @@ Ollama server.
 | `prepare_history.py` | Stage 0 — git history → budget-fitting corpus (model-free) |
 | `build_profile.py`   | Stage 1 — corpus → `developer_profile.json` (one Gemma pass) |
 | `live_check.py`      | Stage 2 — new diff vs profile (fast, live) |
+| `commit_capstone.py` | Stage 3 — Gemma function call writes a history-aware commit |
 | `server.py`          | stdlib backend for the demo |
 | `web/index.html`     | single-page UI: autobiography + live check |
 | `ollama_client.py`   | tiny urllib client, forces `num_ctx` |
@@ -94,3 +96,6 @@ Ollama server.
    recurring-pattern cards.
 2. **Act 2** (live, on stage): paste a fresh diff, watch it get flagged against
    your own history in seconds — with the past commit shas where you did it before.
+3. **Act 3** (function calling): click "Write a history-aware commit" — Gemma emits
+   an `execute_git_commit` tool call whose message cites the pattern and past shas;
+   approve it and the commit lands in a scratch repo.
