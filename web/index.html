@@ -89,6 +89,19 @@
     to { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
   .tl-legend { font-size: 12px; color: var(--dim); margin: 12px 0 2px; }
 
+  /* patterns × projects matrix (the multi-repo view) */
+  .matrix { display: grid; align-items: stretch; }
+  .mx-corner, .mx-head { padding: 12px 14px; font-size: 12px; font-weight: 700; color: var(--dim);
+    text-transform: uppercase; letter-spacing: .5px; text-align: center; border-bottom: 2px solid var(--line); }
+  .mx-name { padding: 16px 14px; font-size: 13.5px; font-weight: 600; display: flex; align-items: center;
+    gap: 9px; border-bottom: 1px solid var(--line); line-height: 1.4; }
+  .mx-name.cross { background: #f2f6ff; }
+  .mx-cell { border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); display: flex;
+    flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 14px 6px; min-height: 58px; }
+  .mx-dot { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 4px rgba(60,90,255,.08);
+    animation: pop .45s cubic-bezier(.34,1.56,.64,1) both; }
+  .mx-date { font-size: 10.5px; color: var(--faint); font-family: ui-monospace, monospace; }
+
   /* pattern cards — responsive grid, fills wide screens */
   #cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
     gap: 28px; align-items: start; }
@@ -210,7 +223,7 @@
   <h2><span class="act">ACT 1</span> &nbsp;Coding Autobiography</h2>
   <div id="meta">Loading profile…</div>
 
-  <div class="h2sub">When each recurring mistake showed up across your history — dots are the commits where it appeared.</div>
+  <div class="h2sub">Which of your projects each pattern shows up in. A row lit in more than one column is your habit, not the project’s.</div>
   <div class="tl" id="timeline"></div>
 
   <div id="cards"></div>
@@ -351,72 +364,41 @@ function parseOcc(o){
 }
 function daysBetween(a,b){ return (new Date(b)-new Date(a))/86400000; }
 
-function renderTimeline(p, manifest){
+function renderTimeline(p, manifest){   // patterns × projects matrix
   const wrap = document.getElementById('timeline'); wrap.innerHTML='';
-  // occurrences are bare shas; resolve each to a date via the manifest.
-  const shaDate = {};
-  (manifest && manifest.kept || []).forEach(k=>{ shaDate[String(k.sha).slice(0,10)] = k.date; });
-  const dateFor = sha => shaDate[String(sha).slice(0,10)] || null;
+  const repos = Object.keys((manifest && manifest.repos) || {});
+  const shaDate = {}; (manifest && manifest.kept || []).forEach(k=>{ shaDate[String(k.sha).slice(0,10)] = k.date; });
+  const pats = (p.patterns||[]);
+  if(!repos.length || !pats.length){ wrap.style.display='none'; return; }
 
-  const rows = (p.patterns||[]).map(pat=>({
-    name: pat.name, cat: CAT.includes(pat.category)?pat.category:'process',
-    occ: [...new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha))].map(sha=>({sha, date:dateFor(sha)}))
-                              .filter(o=>o.date)
-  })).filter(r=>r.occ.length);
-  const all = rows.flatMap(r=>r.occ.map(o=>o.date));
-  if(!all.length){ wrap.style.display='none'; return; }  // hide only the strip, never <main>
-  let min = all.reduce((a,b)=> a<b?a:b), max = all.reduce((a,b)=> a>b?a:b);
-  // pad the range a touch so end dots aren't on the edge
-  const total = Math.max(1, daysBetween(min,max));
-  const pos = d => (daysBetween(min,d)/total)*100;
+  const grid = el('div','matrix');
+  grid.style.gridTemplateColumns = `minmax(200px, 1.6fr) repeat(${repos.length}, 1fr)`;
+  grid.appendChild(el('div','mx-corner',''));
+  repos.forEach(r=> grid.appendChild(el('div','mx-head', r)));
 
-  // month axis
-  const axis = el('div','tl-axis');
-  const start = new Date(min), end = new Date(max);
-  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  let lastLeft = -99;
-  while(cur <= end){
-    const iso = cur.toISOString().slice(0,10);
-    const left = Math.max(0, Math.min(100, pos(iso)));
-    if(left - lastLeft >= 7){  // skip labels that would overlap the previous one
-      const s = el('span', null, cur.toLocaleString('en',{month:'short'}));
-      s.style.left = left+'%'; axis.appendChild(s); lastLeft = left;
-    }
-    cur.setMonth(cur.getMonth()+1);
-  }
-  wrap.appendChild(axis);
-
-  rows.forEach(r=>{
-    const item = el('div','tl-item');
-    const name = el('div','tl-name');
-    const sw = el('span','tl-swatch'); sw.style.background = CATCOLOR(r.cat); name.appendChild(sw);
-    name.appendChild(el('span', null, r.name));   // full name, wraps, never truncated
-    item.appendChild(name);
-    const track = el('div','tl-track');
-    track.appendChild(el('div','tl-base'));
-    const dates = r.occ.map(o=>o.date).sort();
-    const a=pos(dates[0]), b=pos(dates[dates.length-1]);
-    const span = el('div','tl-span'); span.style.left=a+'%'; span.style.width=Math.max(0,b-a)+'%';
-    span.style.background = CATCOLOR(r.cat); track.appendChild(span);
-    r.occ.forEach(o=>{
-      const dot = el('div','tl-dot'); const x=pos(o.date); dot.style.left=x+'%';
-      dot.style.background = CATCOLOR(r.cat);
-      dot.style.animationDelay = (0.25 + x/100*1.1).toFixed(2)+'s';  // pop in left-to-right
-      dot.title = `${o.date} · ${o.sha}`;
-      track.appendChild(dot);
+  pats.forEach(pat=>{
+    const cat = CAT.includes(pat.category)? pat.category : 'process';
+    const projects = new Set(pat.projects||[]);
+    const name = el('div','mx-name'+(projects.size>=2?' cross':''));
+    const sw = el('span','tl-swatch'); sw.style.background = CATCOLOR(cat); name.appendChild(sw);
+    name.appendChild(el('span', null, pat.name));
+    grid.appendChild(name);
+    const byRepo = {};
+    (pat.occurrences||[]).forEach(o=>{ const sha=parseOcc(o).sha; const r=o.repo||''; (byRepo[r]=byRepo[r]||[]).push(shaDate[sha]||''); });
+    repos.forEach((r,i)=>{
+      const cell = el('div','mx-cell');
+      if(byRepo[r]){
+        const dot = el('div','mx-dot'); dot.style.background = CATCOLOR(cat); dot.style.animationDelay = (0.15+i*0.08)+'s';
+        const dates = [...new Set(byRepo[r])].filter(Boolean).sort();
+        dot.title = dates.join(', ');
+        cell.appendChild(dot);
+        if(dates.length) cell.appendChild(el('div','mx-date', dates[0] + (dates.length>1? ' +'+(dates.length-1) : '')));
+      }
+      grid.appendChild(cell);
     });
-    item.appendChild(track); wrap.appendChild(item);
   });
-  // legend: what the border/dot colors mean
-  const cats = [...new Set(rows.map(r=>r.cat))];
-  const legend = el('div','legend');
-  cats.forEach(c=>{
-    const k = el('span','k');
-    const sw = el('span','sw'); sw.style.background = CATCOLOR(c); k.appendChild(sw);
-    k.appendChild(el('span', null, c)); legend.appendChild(k);
-  });
-  const note = el('span','k'); note.appendChild(el('span', null, '· each dot = a commit where the pattern appeared')); legend.appendChild(note);
-  wrap.appendChild(legend);
+  wrap.appendChild(grid);
+  wrap.appendChild(el('div','tl-legend','A row with dots in 2+ columns is a habit that follows you across projects.'));
 }
 
 const SEV_ORDER = {high:0, medium:1, low:2};
