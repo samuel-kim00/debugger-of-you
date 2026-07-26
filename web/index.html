@@ -81,8 +81,17 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
   .ev-item b { color: var(--ink); }
   .ev-item .evsha { color: var(--accent); font-weight: 700; margin-right: 4px; }
-  .shas { font-size: 12.5px; color: var(--accent); font-family: ui-monospace, monospace;
-    margin-top: 12px; word-break: break-all; }
+  .fix-label { font-size: 12px; font-weight: 700; color: var(--arch); text-transform: uppercase;
+    letter-spacing: .8px; margin-top: 22px; margin-bottom: 4px; }
+  .fix { background: #eef7f1; border: 1px solid #cceadd; border-left: 3px solid var(--arch);
+    border-radius: 10px; padding: 14px 16px; font-size: 14.5px; line-height: 1.7; color: #1c6b4c; }
+  .shas { font-size: 12.5px; font-family: ui-monospace, monospace; margin-top: 16px;
+    display: flex; flex-wrap: wrap; gap: 12px; }
+  .shachip { color: var(--accent); cursor: pointer; border-bottom: 1px dashed var(--accent); }
+  .shachip.open { font-weight: 700; }
+  .diffpanel { background: #0f1420; color: #d6dbe6; border-radius: 10px; padding: 14px 16px;
+    margin-top: 12px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.55;
+    white-space: pre; overflow: auto; max-height: 380px; }
   .span { font-size: 12.5px; color: var(--faint); margin-top: 8px; }
 
   .subgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
@@ -258,9 +267,11 @@ function renderTimeline(p, manifest){
   wrap.appendChild(legend);
 }
 
+const SEV_ORDER = {high:0, medium:1, low:2};
 function renderCards(p){
   const c = document.getElementById('cards'); c.innerHTML='';
-  (p.patterns||[]).forEach(pat=>{
+  const pats = [...(p.patterns||[])].sort((a,b)=>(SEV_ORDER[a.severity]??3)-(SEV_ORDER[b.severity]??3));
+  pats.forEach(pat=>{
     const cat = CAT.includes(pat.category)? pat.category : 'process';
     const card = el('div','card '+cat);
     card.appendChild(el('h3', null, pat.name));
@@ -274,8 +285,20 @@ function renderCards(p){
       card.appendChild(el('div','ev-label','Evidence from your commits'));
       renderEvidence(card, pat.evidence);
     }
+    if(pat.fix){
+      card.appendChild(el('div','fix-label','How to avoid it next time'));
+      card.appendChild(el('div','fix', pat.fix));
+    }
     const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
-    if(shas.length) card.appendChild(el('div','shas', shas.join('   ')));
+    if(shas.length){
+      const row = el('div','shas');
+      shas.forEach(sha=>{
+        const chip = el('span','shachip', sha);
+        chip.addEventListener('click', ()=>toggleDiff(card, sha, chip));
+        row.appendChild(chip);
+      });
+      card.appendChild(row);
+    }
     if(pat.first_seen||pat.last_seen)
       card.appendChild(el('div','span', `first seen ${pat.first_seen||'?'}  →  last seen ${pat.last_seen||'?'}`));
     c.appendChild(card);
@@ -306,6 +329,19 @@ function renderSub(p){
   }
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// click a sha chip -> fetch and toggle the real commit diff (needs the backend)
+async function toggleDiff(card, sha, chip){
+  if(chip._panel){ chip._panel.remove(); chip._panel=null; chip.className='shachip'; return; }
+  chip.className='shachip open';
+  const pre = document.createElement('pre'); pre.className='diffpanel'; pre.textContent='loading '+sha+' …';
+  card.appendChild(pre); chip._panel=pre;
+  try{
+    const r = await fetch('/api/commit?sha='+encodeURIComponent(sha));
+    const d = await r.json();
+    pre.textContent = d.diff || d.error || '(no diff)';
+  }catch(e){ pre.textContent = 'diff needs the running server (python3 server.py)'; }
+}
 
 // evidence comes as "1. **`sha`**: text. 2. **`sha`**: text." — split per commit.
 function mdInline(s){

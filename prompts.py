@@ -24,10 +24,11 @@ PROFILE_SCHEMA = {
                     },
                     "occurrences": {"type": "array", "items": {"type": "string"}},
                     "evidence": {"type": "string"},
+                    "fix": {"type": "string"},
                     "first_seen": {"type": "string"},
                     "last_seen": {"type": "string"},
                 },
-                "required": ["name", "description", "category", "occurrences", "evidence"],
+                "required": ["name", "description", "category", "severity", "occurrences", "evidence", "fix"],
             },
         },
         "style_drift": {
@@ -68,18 +69,25 @@ Your job is the thing no per-commit review can do: find patterns that only \
 appear when you see MONTHS of history together.
 
 Focus on:
-1. patterns — recurring bug types or mistakes the SAME developer makes again and \
-   again across DIFFERENT commits and dates (e.g. "repeatedly forgets to guard \
-   against zero/None before division", "keeps re-fixing the same integer-vs-float \
-   API constraint"). For each, list the commit shas where it shows up, cite \
-   concrete evidence from the diffs, and give first_seen / last_seen dates.
-2. style_drift — how their coding style changed from the earliest to the latest \
-   commits (naming, typing, error handling, structure).
-3. temporal_habits — habits visible only over time (e.g. "fixes bugs in bursts \
-   right after adding a feature", "commits large refactors then patches them").
+1. patterns — recurring mistakes the SAME developer makes again and again across \
+   DIFFERENT commits and dates. Report 6 to 10 SPECIFIC patterns, not 3 broad \
+   buckets. Split by root cause: "zero/None division in indicator math" and \
+   "empty-DataFrame not guarded before access" are TWO patterns, not one \
+   "data handling" pattern. For each pattern give:
+     - severity: "high" if it can crash or corrupt data and recurs often; \
+       "medium" if it causes wrong results or rework; "low" if cosmetic.
+     - occurrences: the commit shas where it appears (2+).
+     - evidence: concrete quoted lines from the diffs.
+     - fix: ONE concrete, preventive rule the developer can apply next time \
+       (e.g. "add a safe_div(a,b) helper and use it for every ratio"), not vague \
+       advice.
+     - first_seen / last_seen dates.
+2. style_drift — how their coding style changed from earliest to latest commits \
+   (naming, typing, error handling, structure).
+3. temporal_habits — habits visible only over time.
 
-Only report a pattern if it genuinely appears in MULTIPLE commits. Be specific \
-and cite shas. No generic advice. Output must match the provided JSON schema.
+Only report a pattern that genuinely appears in MULTIPLE commits. Be specific, \
+cite shas, and make every `fix` actionable. Output must match the JSON schema.
 
 === GIT HISTORY ===
 {corpus}

@@ -15,6 +15,15 @@ from pathlib import Path
 
 import live_check
 import commit_capstone
+import prepare_history
+from urllib.parse import urlparse, parse_qs
+
+
+def _repo_path():
+    m = ROOT / "manifest.json"
+    if m.exists():
+        return Path(json.loads(m.read_text()).get("repo", ""))
+    return None
 
 ROOT = Path(__file__).parent
 PORT = 8777
@@ -45,6 +54,13 @@ class Handler(BaseHTTPRequestHandler):
                 "manifest": json.loads(manifest_path.read_text()) if manifest_path.exists() else {},
             }
             return self._json(200, out)
+        if self.path.startswith("/api/commit"):
+            sha = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
+            repo = _repo_path()
+            if not sha or not repo or not (repo / ".git").exists():
+                return self._json(404, {"error": "no repo or sha"})
+            diff = prepare_history.filtered_diff(repo, sha)
+            return self._json(200, {"sha": sha, "diff": diff[:14000] or "(no source diff)"})
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
