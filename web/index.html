@@ -104,6 +104,10 @@ const CAT = ["bug","style","architecture","process"];
 function el(tag, cls, html){ const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
 
 async function loadProfile(){
+  // static snapshot mode: data inlined by make_snapshot.py, no backend needed
+  if(window.__PROFILE__){
+    renderMeta(window.__MANIFEST__||{}); renderTimeline(window.__MANIFEST__||{}); renderCards(window.__PROFILE__); return;
+  }
   try{
     const r = await fetch('/api/profile');
     if(!r.ok){ document.getElementById('meta').textContent = (await r.json()).error || 'No profile yet.'; return; }

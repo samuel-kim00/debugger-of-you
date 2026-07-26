@@ -3,4 +3,5 @@ __pycache__/
 corpus.txt
 manifest.json
 developer_profile.json
+demo_snapshot.html
 .DS_Store
