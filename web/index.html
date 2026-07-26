@@ -6,76 +6,98 @@
 <title>The Debugger of You</title>
 <style>
   :root {
-    --bg: #0d1017; --panel: #161b25; --line: #262d3a; --ink: #e6e9ef;
-    --dim: #8b93a3; --accent: #7c9cff; --bug: #ff6b6b; --style: #ffd166;
-    --arch: #06d6a0; --process: #a78bfa; --ok: #2dd4a7;
+    --bg: #ffffff; --panel: #f6f8fb; --card: #ffffff; --line: #e3e8ef;
+    --ink: #1a1e28; --dim: #5b6472; --faint: #8a93a3;
+    --accent: #3b5bff; --bug: #e5484d; --style: #cf8a00;
+    --arch: #0e9f6e; --process: #7c3aed;
+    --shadow: 0 1px 3px rgba(20,30,60,.06), 0 4px 16px rgba(20,30,60,.05);
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  header { padding: 28px 32px 18px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -0.3px; }
-  .sub { color: var(--dim); font-size: 13px; }
-  .badge { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--ok);
-    border: 1px solid var(--ok); border-radius: 999px; padding: 4px 12px; }
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 30px 40px 22px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.4px; }
+  .sub { color: var(--dim); font-size: 14px; margin-top: 2px; }
+  .badge { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--arch);
+    background: #e7f7ef; border: 1px solid #b9e7d1; border-radius: 999px; padding: 6px 14px; }
   .badge::before { content: "● "; }
-  main { max-width: 1080px; margin: 0 auto; padding: 24px 32px 80px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
-    color: var(--dim); margin: 34px 0 14px; }
-  .act { font-size: 11px; color: var(--accent); font-weight: 700; }
+  main { max-width: 860px; margin: 0 auto; padding: 28px 40px 90px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--faint); margin: 40px 0 6px; font-weight: 700; }
+  .act { color: var(--accent); }
+  .h2sub { color: var(--dim); font-size: 14px; margin: 0 0 18px; }
+  #meta { color: var(--dim); font-size: 15px; margin-bottom: 8px; }
+  #meta b { color: var(--ink); }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-  /* timeline */
-  .timeline { display: flex; gap: 4px; overflow-x: auto; padding: 8px 0 14px; }
-  .dot { flex: 0 0 auto; text-align: center; min-width: 66px; }
-  .dot .bar { height: 6px; border-radius: 3px; background: var(--accent);
-    opacity: 0.5; margin-bottom: 6px; }
-  .dot .d { font-size: 10px; color: var(--dim); }
+  /* recurrence timeline */
+  .tl { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px 10px; margin: 6px 0 8px; }
+  .tl-axis { position: relative; height: 20px; margin-left: 190px; border-bottom: 1px solid var(--line); }
+  .tl-axis span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--faint); top: 2px; }
+  .tl-row { display: flex; align-items: center; height: 40px; }
+  .tl-label { width: 190px; padding-right: 14px; font-size: 13px; font-weight: 600;
+    text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-track { position: relative; flex: 1; height: 100%; }
+  .tl-span { position: absolute; top: 50%; height: 3px; border-radius: 2px; opacity: .35; transform: translateY(-50%); }
+  .tl-dot { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%;
+    transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06); cursor: default; }
+  .tl-legend { font-size: 12px; color: var(--dim); margin: 8px 0 2px 190px; }
 
-  /* pattern cards */
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr));
-    gap: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; padding: 16px; border-left: 3px solid var(--accent); }
+  /* pattern cards — one column, roomy */
+  .card { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+    border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; border-left: 5px solid var(--accent); }
   .card.bug { border-left-color: var(--bug); }
   .card.style { border-left-color: var(--style); }
   .card.architecture { border-left-color: var(--arch); }
   .card.process { border-left-color: var(--process); }
-  .card h3 { margin: 0 0 6px; font-size: 15px; }
-  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-  .tag { font-size: 11px; padding: 2px 8px; border-radius: 6px;
-    background: #ffffff10; color: var(--dim); }
-  .card p { margin: 8px 0; font-size: 13px; color: #cfd4de; }
-  .ev { font-size: 12px; color: var(--dim); font-family: ui-monospace, monospace;
-    background: #00000030; padding: 8px 10px; border-radius: 8px; margin-top: 8px;
-    white-space: pre-wrap; }
-  .shas { font-size: 11px; color: var(--accent); font-family: ui-monospace, monospace;
-    margin-top: 8px; word-break: break-all; }
-  .span { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .card h3 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.2px; line-height: 1.35; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 12px; }
+  .tag { font-size: 12px; padding: 3px 10px; border-radius: 7px; background: #eef1f6; color: var(--dim); font-weight: 600; }
+  .tag.sev-high { background: #fdecec; color: var(--bug); }
+  .tag.sev-medium { background: #fbf3e0; color: var(--style); }
+  .card p { margin: 10px 0; font-size: 15.5px; color: #333a46; }
+  .ev-label { font-size: 12px; font-weight: 700; color: var(--faint); text-transform: uppercase;
+    letter-spacing: .8px; margin-top: 14px; }
+  .ev { font-size: 13.5px; color: #2a3140; background: #f4f6f9; border: 1px solid var(--line);
+    padding: 12px 14px; border-radius: 10px; margin-top: 6px; white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55; overflow-x: auto; }
+  .shas { font-size: 12.5px; color: var(--accent); font-family: ui-monospace, monospace;
+    margin-top: 12px; word-break: break-all; }
+  .span { font-size: 12.5px; color: var(--faint); margin-top: 8px; }
 
-  /* live check */
-  .live { background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; padding: 18px; }
-  textarea { width: 100%; min-height: 180px; background: #0b0e14; color: var(--ink);
-    border: 1px solid var(--line); border-radius: 8px; padding: 12px;
-    font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
-  .row { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
-  button { background: var(--accent); color: #0b0e14; border: 0; font-weight: 700;
-    padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .hint { color: var(--dim); font-size: 12px; }
-  .match { border: 1px solid var(--line); border-left: 3px solid var(--bug);
-    border-radius: 10px; padding: 14px; margin-top: 12px; background: #1a1016; }
-  .match.low { border-left-color: var(--dim); }
+  .subgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px){ .subgrid{ grid-template-columns: 1fr; } .tl-label,.tl-axis,.tl-legend{ } }
+  .mini { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .mini h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--faint); }
+  .mini .item { font-size: 14px; margin: 9px 0; color: #333a46; }
+  .mini .item b { color: var(--ink); }
+  .arrow { color: var(--faint); }
+
+  /* act 2/3 */
+  .live { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+    border-radius: 14px; padding: 22px; }
+  textarea { width: 100%; min-height: 180px; background: #fbfcfe; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+    font-family: ui-monospace, monospace; font-size: 13px; resize: vertical; }
+  .rowb { display: flex; gap: 14px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  button { background: var(--accent); color: #fff; border: 0; font-weight: 700;
+    padding: 12px 20px; border-radius: 10px; cursor: pointer; font-size: 15px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--dim); font-size: 13.5px; }
+  .match { border: 1px solid var(--line); border-left: 5px solid var(--bug); box-shadow: var(--shadow);
+    border-radius: 12px; padding: 18px 20px; margin-top: 14px; background: #fff; }
+  .match.low { border-left-color: var(--faint); }
   .match.medium { border-left-color: var(--style); }
-  .match .conf { font-size: 11px; color: var(--dim); text-transform: uppercase; }
-  .clean { color: var(--ok); padding: 14px 0; }
-  .muted { color: var(--dim); }
-  .capstone { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .match h3 { margin: 6px 0; font-size: 18px; }
+  .match .conf { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .6px; }
+  .clean { color: var(--arch); font-weight: 600; padding: 14px 0; }
+  .capstone { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line); }
   .capstone button { background: var(--arch); }
-  .commitmsg { background: #0b0e14; border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px; margin: 10px 0; font-family: ui-monospace, monospace; font-size: 12px;
-    color: #cfd4de; white-space: pre-wrap; overflow-x: auto; }
+  .commitmsg { background: #f4f6f9; border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; margin: 12px 0; font-family: ui-monospace, monospace; font-size: 13px;
+    color: #2a3140; white-space: pre-wrap; overflow-x: auto; line-height: 1.55; }
 </style>
 </head>
 <body>
@@ -89,16 +111,22 @@
 
 <main>
   <h2><span class="act">ACT 1</span> &nbsp;Coding Autobiography</h2>
-  <div id="meta" class="muted">Loading profile…</div>
-  <div class="timeline" id="timeline"></div>
-  <div class="cards" id="cards"></div>
+  <div id="meta">Loading profile…</div>
 
-  <h2><span class="act">ACT 2</span> &nbsp;Live Check — paste a new diff</h2>
+  <div class="h2sub">When each recurring mistake showed up across your history — dots are the commits where it appeared.</div>
+  <div class="tl" id="timeline"></div>
+
+  <div id="cards"></div>
+
+  <div class="subgrid" id="subgrid"></div>
+
+  <h2><span class="act">ACT 2</span> &nbsp;Live Check</h2>
+  <div class="h2sub">Paste a diff you're about to commit. It's matched only against the cached profile — runs in seconds, fully local.</div>
   <div class="live">
-    <textarea id="diff" placeholder="Paste `git diff` of code you're about to commit…"></textarea>
-    <div class="row">
+    <textarea id="diff" placeholder="Paste `git diff` here…"></textarea>
+    <div class="rowb">
       <button id="run">Check against my history</button>
-      <span class="hint" id="livehint">Compares only against the cached profile — runs in seconds, fully local.</span>
+      <span class="hint" id="livehint"></span>
     </div>
     <div id="results"></div>
   </div>
@@ -106,40 +134,93 @@
 
 <script>
 const CAT = ["bug","style","architecture","process"];
-function el(tag, cls, html){ const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
+const CATcolorMap = {bug:"#e5484d", style:"#cf8a00", architecture:"#0e9f6e", process:"#7c3aed"};
+function CATCOLOR(c){ return CATcolorMap[c]||"#3b5bff"; }
+function el(tag, cls, txt){ const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
 
 async function loadProfile(){
-  // static snapshot mode: data inlined by make_snapshot.py, no backend needed
-  if(window.__PROFILE__){
-    renderMeta(window.__MANIFEST__||{}); renderTimeline(window.__MANIFEST__||{}); renderCards(window.__PROFILE__); return;
-  }
+  if(window.__PROFILE__){ render(window.__PROFILE__, window.__MANIFEST__||{}); return; }
   try{
     const r = await fetch('/api/profile');
     if(!r.ok){ document.getElementById('meta').textContent = (await r.json()).error || 'No profile yet.'; return; }
     const {profile, manifest} = await r.json();
-    renderMeta(manifest);
-    renderTimeline(manifest);
-    renderCards(profile);
+    render(profile, manifest);
   }catch(e){ document.getElementById('meta').textContent = 'Backend not reachable: '+e; }
+}
+
+function render(profile, manifest){
+  renderMeta(manifest);
+  renderTimeline(profile, manifest);
+  renderCards(profile);
+  renderSub(profile);
 }
 
 function renderMeta(m){
   if(!m || !m.commits_total){ document.getElementById('meta').textContent=''; return; }
+  const repo = (m.repo||'').split('/').pop();
+  const ctx = m.budget_tokens>=1000? Math.round(m.budget_tokens/1000)+'K' : m.budget_tokens;
   document.getElementById('meta').innerHTML =
-    `Read <b>${m.commits_kept}</b> commits (${m.corpus_tokens_est.toLocaleString()} tokens) `+
-    `spanning the full history of <code>${(m.repo||'').split('/').pop()}</code>, in a single ${ (m.budget_tokens>=1000? Math.round(m.budget_tokens/1000)+'K':m.budget_tokens) } context.`;
+    `Read <b>${m.commits_kept}</b> of ${m.commits_total} commits `+
+    `(<b>${(m.corpus_tokens_est||0).toLocaleString()}</b> tokens) spanning the full history of `+
+    `<code>${repo}</code> — in a single ${ctx} context, no chunking.`;
 }
 
-function renderTimeline(m){
-  const t = document.getElementById('timeline'); t.innerHTML='';
-  (m.kept||[]).forEach(k=>{
-    const d = el('div','dot');
-    const h = Math.max(6, Math.min(34, k.tokens/90));
-    d.appendChild(el('div','bar')); d.firstChild.style.height = h+'px';
-    d.appendChild(el('div','d', k.date.slice(5)));
-    d.title = `${k.sha} · ${k.subject}`;
-    t.appendChild(d);
+// parse "sha | 2026-03-31 | subject" -> {sha,date,subject}
+function parseOcc(s){
+  const dm = String(s).match(/(\d{4}-\d{2}-\d{2})/);
+  const sha = String(s).trim().split(/[\s|]/)[0];
+  return { sha, date: dm? dm[1]: null, raw: s };
+}
+function daysBetween(a,b){ return (new Date(b)-new Date(a))/86400000; }
+
+function renderTimeline(p, manifest){
+  const wrap = document.getElementById('timeline'); wrap.innerHTML='';
+  // occurrences are bare shas; resolve each to a date via the manifest.
+  const shaDate = {};
+  (manifest && manifest.kept || []).forEach(k=>{ shaDate[String(k.sha).slice(0,10)] = k.date; });
+  const dateFor = sha => shaDate[String(sha).slice(0,10)] || null;
+
+  const rows = (p.patterns||[]).map(pat=>({
+    name: pat.name, cat: CAT.includes(pat.category)?pat.category:'process',
+    occ: (pat.occurrences||[]).map(o=>{ const sha=parseOcc(o).sha; return {sha, date:dateFor(sha)}; })
+                              .filter(o=>o.date)
+  })).filter(r=>r.occ.length);
+  const all = rows.flatMap(r=>r.occ.map(o=>o.date));
+  if(!all.length){ wrap.style.display='none'; return; }  // hide only the strip, never <main>
+  let min = all.reduce((a,b)=> a<b?a:b), max = all.reduce((a,b)=> a>b?a:b);
+  // pad the range a touch so end dots aren't on the edge
+  const total = Math.max(1, daysBetween(min,max));
+  const pos = d => (daysBetween(min,d)/total)*100;
+
+  // month axis
+  const axis = el('div','tl-axis');
+  const start = new Date(min), end = new Date(max);
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while(cur <= end){
+    const iso = cur.toISOString().slice(0,10);
+    const s = el('span', null, cur.toLocaleString('en',{month:'short'}));
+    s.style.left = Math.max(0,Math.min(100,pos(iso)))+'%';
+    axis.appendChild(s); cur.setMonth(cur.getMonth()+1);
+  }
+  wrap.appendChild(axis);
+
+  rows.forEach(r=>{
+    const row = el('div','tl-row');
+    row.appendChild(el('div','tl-label', r.name));
+    const track = el('div','tl-track');
+    const dates = r.occ.map(o=>o.date).sort();
+    const a=pos(dates[0]), b=pos(dates[dates.length-1]);
+    const span = el('div','tl-span'); span.style.left=a+'%'; span.style.width=(b-a)+'%';
+    span.style.background = CATCOLOR(r.cat); track.appendChild(span);
+    r.occ.forEach(o=>{
+      const dot = el('div','tl-dot'); dot.style.left=pos(o.date)+'%';
+      dot.style.background = CATCOLOR(r.cat);
+      dot.title = `${o.date} · ${o.sha}`;
+      track.appendChild(dot);
+    });
+    row.appendChild(track); wrap.appendChild(row);
   });
+  wrap.appendChild(el('div','tl-legend','each dot = a commit where this pattern appeared'));
 }
 
 function renderCards(p){
@@ -150,19 +231,46 @@ function renderCards(p){
     card.appendChild(el('h3', null, pat.name));
     const tags = el('div','tags');
     tags.appendChild(el('span','tag', cat));
-    if(pat.severity) tags.appendChild(el('span','tag', pat.severity+' severity'));
+    if(pat.severity) tags.appendChild(el('span','tag sev-'+pat.severity, pat.severity+' severity'));
     tags.appendChild(el('span','tag', (pat.occurrences||[]).length+' commits'));
     card.appendChild(tags);
     card.appendChild(el('p', null, pat.description||''));
-    if(pat.evidence) card.appendChild(el('div','ev', pat.evidence));
-    if(pat.occurrences && pat.occurrences.length)
-      card.appendChild(el('div','shas', pat.occurrences.join('  ')));
+    if(pat.evidence){
+      card.appendChild(el('div','ev-label','Evidence from your commits'));
+      card.appendChild(el('div','ev', pat.evidence));
+    }
+    const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
+    if(shas.length) card.appendChild(el('div','shas', shas.join('   ')));
     if(pat.first_seen||pat.last_seen)
-      card.appendChild(el('div','span', `${pat.first_seen||'?'} → ${pat.last_seen||'?'}`));
+      card.appendChild(el('div','span', `first seen ${pat.first_seen||'?'}  →  last seen ${pat.last_seen||'?'}`));
     c.appendChild(card);
   });
-  if(!(p.patterns||[]).length) c.innerHTML='<span class="muted">No recurring patterns found.</span>';
+  if(!(p.patterns||[]).length) c.innerHTML='<div class="hint">No recurring patterns found.</div>';
 }
+
+function renderSub(p){
+  const g = document.getElementById('subgrid'); g.innerHTML='';
+  const drift = p.style_drift||[], habits = p.temporal_habits||[];
+  if(drift.length){
+    const m = el('div','mini'); m.appendChild(el('h4', null, 'How your style drifted'));
+    drift.forEach(s=>{
+      const it = el('div','item');
+      it.innerHTML = `<b>${escapeHtml(s.aspect||'')}</b><br>${escapeHtml((s.early||'').slice(0,110))} <span class="arrow">→</span> ${escapeHtml((s.recent||'').slice(0,110))}`;
+      m.appendChild(it);
+    });
+    g.appendChild(m);
+  }
+  if(habits.length){
+    const m = el('div','mini'); m.appendChild(el('h4', null, 'Habits only visible over time'));
+    habits.forEach(h=>{
+      const it = el('div','item');
+      it.innerHTML = `<b>${escapeHtml(h.habit||'')}</b><br>${escapeHtml((h.detail||'').slice(0,140))}`;
+      m.appendChild(it);
+    });
+    g.appendChild(m);
+  }
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 document.getElementById('run').addEventListener('click', async ()=>{
   const btn = document.getElementById('run');
@@ -190,10 +298,9 @@ function renderMatches(data){
     d.appendChild(el('p', null, m.why||''));
     if(m.suggestion) d.appendChild(el('p', null, '→ '+m.suggestion));
     if(m.related_shas && m.related_shas.length)
-      d.appendChild(el('div','shas', 'you did this before: '+m.related_shas.join('  ')));
+      d.appendChild(el('div','shas', 'you did this before: '+m.related_shas.join('   ')));
     res.appendChild(d);
   });
-  // Capstone: let Gemma write a history-aware commit via native function calling.
   const cap = el('div','capstone');
   const btn = el('button','', 'Write a history-aware commit (Gemma function call)');
   cap.appendChild(btn); res.appendChild(cap);
