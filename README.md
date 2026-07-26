@@ -1,101 +1,102 @@
 # The Debugger of You
 
-**Your coding autobiography, read in one context by local Gemma 4.**
+**Your coding autobiography — the mistakes you repeat across all your projects, read
+in one local Gemma 4 pass.**
 Track: Edge / On-Device.
 
-Every AI code reviewer and commit-message tool on the market looks at **one diff
-at a time**. That means they can never see the thing that actually defines a
-developer: *the mistake you keep making across months.*
+Every AI code reviewer and commit-message tool looks at **one diff at a time**. So
+they can never see the thing that actually defines a developer: *the mistake you make
+in every project.*
 
-**The Debugger of You** feeds your **entire git history into a single Gemma 4
-context — no per-diff chunking** — and writes a "Coding Autobiography": the bug
-patterns, style drift, and habits that only emerge when months of commits are
-read together. It then caches that profile and uses it to **live-check any new
-diff** against your own track record in seconds.
+**The Debugger of You** reads your history across **several of your projects at once,
+in a single Gemma 4 context — no per-diff chunking, no RAG** — and writes a "Coding
+Autobiography": your recurring mistakes, ranked by severity, each with a concrete fix.
+A pattern that shows up in **more than one project** is flagged as *your* habit, not
+the project's. It then live-checks any new diff against that profile in seconds, and
+uses Gemma 4's **native function calling** to write a history-aware commit.
 
-Because it runs on a local Gemma 4 via Ollama, it works fully offline and your
-private codebase never leaves your machine.
+It runs on a local Gemma 4 via Ollama, so it works **fully offline** and your source
+never leaves the machine.
 
 ---
 
-## Why this needs Gemma 4 specifically
+## Why this needs Gemma 4 (Edge / On-Device)
 
-- **Long context is the whole trick.** The differentiator is reading the full
-  history at once. That is a direct, honest answer to "why do you need a long
-  context window" — without it, this product cannot exist.
-- **On-device / offline.** Your source history is private. A cloud model would
-  mean shipping your entire codebase to a third party. Local Gemma 4 means it
-  never leaves the laptop.
-- **Native function calling** lets the live-check auto-write a commit message that
-  knows *why* the change relates to your past: Gemma emits an `execute_git_commit`
-  tool call citing the recurring pattern and past SHAs — see Act 3 below.
+- **Long context is the whole trick** — reading a full, multi-project history in one
+  window is the differentiator. Without it, the product cannot exist.
+- **On-device is mandatory** — your source is private; a cloud model would mean
+  uploading your whole codebase. Local Gemma 4 means it never leaves the laptop.
+- **Native function calling** — Gemma emits an `execute_git_commit` tool call whose
+  message cites the past commits the change echoes.
 
 ## Architecture
 
 ```
-repo git history
-      │  prepare_history.py   (filter to source, cap per-commit, stratified sample)
-      ▼
-   corpus.txt  (~37K tokens, spans the whole timeline)
-      │  build_profile.py     (ONE Gemma 4 pass, num_ctx 64K, slow, offline)
-      ▼
-developer_profile.json  ← cached to disk, built once
-      │  live_check.py        (new diff + profile only — never reloads history)
-      ▼
-   "This repeats pattern #2 — same cause you fixed in <sha>"
+discover local git repos   (analyze.py — name, language, YOUR commit share)
+        │  pick projects in the browser
+        ▼
+prepare_multi.py   keep only YOUR commits, tag each by project,
+                   stratified-sample across repos → one ~26K-token corpus
+        ▼
+build_profile.py   ONE Gemma 4 pass (num_ctx 40K, offline) → patterns JSON
+        ▼
+verify()           drop any cited line not in the real commit; drop patterns that
+                   don't span 2+ commits on 2+ dates; flag 2+ project patterns
+        ▼
+developer_profile.json    ← cached per project-set (re-selecting is instant)
+        │
+        ├─ Act 1  patterns × projects matrix, severity, fix, real-code side panel
+        ├─ Act 2  live_check.py — new diff vs profile in ~25s (never reloads history)
+        └─ Act 3  commit_capstone.py — Gemma function call writes the commit
 ```
 
-### The 64K scope decision (honest engineering note)
+**Two guarantees that make the 4B model trustworthy:**
+1. **Grounding** — every line the model cites is checked against the real commit and
+   dropped if not found. Everything shown is real.
+2. **Recurrence** — a pattern must span 2+ commits on 2+ dates; three lines in one
+   commit is not a habit.
 
-Gemma 4's true 256K context lives on the 26B/31B models, which don't fit in
-16GB. We standardize on **`gemma4:e4b`** (128K-capable, effective-4B edge model)
-and run it at **`num_ctx` 64K**, which is what an M1/16GB actually sustains. A
-real repo's Python history is ~196K tokens, so `prepare_history.py` filters out
-AI-generated docs and generated files, caps any single commit, and
-stratified-samples across the timeline to land near ~37K tokens — preserving the
-"evolution over time" story while fitting the budget.
-
-**Gotcha we hit:** Ollama silently defaults to a 4096 context. We force it per
-request with `options.num_ctx` instead of the `/set parameter` + `/save` dance.
+**Scope decision:** Gemma 4's true 256K lives on the 26B/31B models, which don't fit
+in 16GB. We use **`gemma4:e4b`** (128K-capable edge model) at a `num_ctx` an M1/16GB
+sustains (100% GPU, 3.4GB). *Gotcha:* Ollama silently defaults to a 4096 context — we
+force it per request with `options.num_ctx`.
 
 ## Setup
 
 ```bash
-# 1. model (7GB)
-ollama pull gemma4:e4b
-
-# 2. build the corpus from any repo you own
-python3 prepare_history.py --repo /path/to/your/repo --budget 50000
-
-# 3. build the profile (slow, one-shot, offline)
-python3 build_profile.py
-
-# 4. run the demo UI
-python3 server.py         # http://localhost:8777
+ollama pull gemma4:e4b        # 7GB, one time
+cd debugger-of-you
+python3 server.py             # http://localhost:8777 — no pip installs
 ```
 
-No pip installs — everything uses the Python standard library plus a local
-Ollama server.
+Open `http://localhost:8777`, pick projects from the auto-discovered list, and click
+**Analyze**. The first run for a project set reads them locally with Gemma (a few
+minutes); every set is cached so re-selecting is instant. Everything is Python
+standard library plus a local Ollama server.
 
 ## Files
 
 | file | role |
 |------|------|
-| `prepare_history.py` | Stage 0 — git history → budget-fitting corpus (model-free) |
-| `build_profile.py`   | Stage 1 — corpus → `developer_profile.json` (one Gemma pass) |
-| `live_check.py`      | Stage 2 — new diff vs profile (fast, live) |
-| `commit_capstone.py` | Stage 3 — Gemma function call writes a history-aware commit |
-| `server.py`          | stdlib backend for the demo |
-| `web/index.html`     | single-page UI: autobiography + live check |
-| `ollama_client.py`   | tiny urllib client, forces `num_ctx` |
-| `prompts.py`         | prompts + JSON schemas for both passes |
+| `analyze.py`         | discover local repos + build/cache a profile for a chosen set |
+| `prepare_multi.py`   | combine several repos (your commits, tagged, sampled) → corpus |
+| `prepare_history.py` | per-repo source-diff extraction used by `prepare_multi` |
+| `build_profile.py`   | one Gemma 4 pass → profile, then `verify()` grounds + filters it |
+| `live_check.py`      | Act 2 — new diff vs profile (fast, live) |
+| `commit_capstone.py` | Act 3 — Gemma function call writes a history-aware commit |
+| `server.py`          | stdlib backend (`/api/repos`, `/api/analyze`, `/api/live-check`, …) |
+| `web/index.html`     | single-page UI: picker → autobiography → live check → commit |
+| `ollama_client.py`   | tiny urllib client; forces `num_ctx`/`num_predict`, repairs JSON |
+| `prompts.py`         | prompts + JSON schemas for the Gemma passes |
 
-## Demo (2 acts)
+## The three acts
 
-1. **Act 1** (pre-built): the Coding Autobiography — commit timeline + the
-   recurring-pattern cards.
-2. **Act 2** (live, on stage): paste a fresh diff, watch it get flagged against
-   your own history in seconds — with the past commit shas where you did it before.
-3. **Act 3** (function calling): click "Write a history-aware commit" — Gemma emits
-   an `execute_git_commit` tool call whose message cites the pattern and past shas;
-   approve it and the commit lands in a scratch repo.
+1. **Act 1 — Coding Autobiography.** A patterns × projects matrix (a row lit in 2+
+   columns is a cross-project habit), each pattern with severity, a fix, and a side
+   panel showing your real code from every commit, offending lines highlighted.
+2. **Act 2 — Live Check.** Paste a fresh diff; it's flagged against your profile in
+   seconds, citing the past commits where you did it before.
+3. **Act 3 — Function-calling commit.** Gemma emits an `execute_git_commit` tool call
+   whose message cites the pattern and past SHAs; approve it and it commits.
+
+See `DEMO_SCRIPT.md` for the recording walkthrough.

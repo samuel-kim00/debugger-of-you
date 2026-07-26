@@ -1,0 +1,15 @@
+diff --git a/src/notifications.js b/src/notifications.js
+--- a/src/notifications.js
++++ b/src/notifications.js
+@@ -1,4 +1,12 @@
++// central place for toast notifications
++window.NotificationManager = {
++  queue: [],
++  push(msg) { this.queue.push(msg); this.render(); },
++  render() { document.getElementById('toasts').innerHTML = this.queue.join(''); }
++};
++
+ export function notify(msg) {
+-  console.log(msg);
++  window.NotificationManager.push(msg);
+ }
