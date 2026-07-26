@@ -25,6 +25,23 @@
   .badge { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--arch);
     background: #e7f7ef; border: 1px solid #b9e7d1; border-radius: 999px; padding: 6px 14px; }
   .badge::before { content: "● "; }
+
+  /* striking hero band on an otherwise light, readable page */
+  .hero { background: linear-gradient(135deg,#0b1030 0%,#161b3d 52%,#241a46 100%);
+    color: #eef1ff; overflow: hidden; }
+  .hero-in { padding: 46px var(--pad) 50px; }
+  .hero-eye { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;
+    color: #7ff0be; background: rgba(46,224,167,.12); border: 1px solid rgba(46,224,167,.32);
+    border-radius: 999px; padding: 7px 15px; }
+  .hero-eye::before { content: "●"; font-size: 10px; }
+  .hero-title { font-size: clamp(26px, 3.4vw, 44px); line-height: 1.18; letter-spacing: -.7px;
+    margin: 20px 0 34px; font-weight: 800; max-width: 24ch; }
+  .hero-title b { color: #9db4ff; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 46px; }
+  .stat .num { font-size: clamp(32px, 4.4vw, 56px); font-weight: 800; letter-spacing: -1.5px;
+    color: #fff; line-height: 1; }
+  .stat .lab { font-size: 12.5px; color: #a7b0d8; margin-top: 10px; text-transform: uppercase; letter-spacing: .7px; }
+
   main { width: 100%; padding: 32px var(--pad) 100px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
     color: var(--faint); margin: 56px 0 10px; font-weight: 700; }
@@ -47,7 +64,10 @@
   .tl-base { position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--line); transform: translateY(-50%); }
   .tl-span { position: absolute; top: 50%; height: 4px; border-radius: 2px; opacity: .4; transform: translateY(-50%); }
   .tl-dot { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%;
-    transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+    transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08);
+    animation: pop .5s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes pop { from { transform: translate(-50%,-50%) scale(0); opacity: 0; }
+    to { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
   .tl-legend { font-size: 12px; color: var(--dim); margin: 12px 0 2px; }
 
   /* pattern cards — responsive grid, fills wide screens */
@@ -136,6 +156,8 @@
   <div class="badge">Offline · on-device</div>
 </div></header>
 
+<section class="hero" id="hero"></section>
+
 <main>
   <h2><span class="act">ACT 1</span> &nbsp;Coding Autobiography</h2>
   <div id="meta">Loading profile…</div>
@@ -176,10 +198,46 @@ async function loadProfile(){
 }
 
 function render(profile, manifest){
+  renderHero(profile, manifest);
   renderMeta(manifest);
   renderTimeline(profile, manifest);
   renderCards(profile);
   renderSub(profile);
+}
+
+function renderHero(p, m){
+  const hero = document.getElementById('hero'); if(!hero) return;
+  const pats = p.patterns||[];
+  const shaDate = {}; (m && m.kept || []).forEach(k=>{ shaDate[String(k.sha).slice(0,10)] = k.date; });
+  const shas = new Set(); pats.forEach(pt=>(pt.occurrences||[]).forEach(o=>shas.add(parseOcc(o).sha.slice(0,10))));
+  const dates = [...shas].map(s=>shaDate[s]).filter(Boolean).sort();
+  const days = dates.length>1 ? Math.round(daysBetween(dates[0], dates[dates.length-1])) : 0;
+  const tokens = m && m.corpus_tokens_est ? Math.round(m.corpus_tokens_est/1000)+'K' : '?';
+  const stats = [
+    {n: pats.length, l:'recurring patterns'},
+    {n: shas.size,   l:'commits implicated'},
+    {n: days,        l:'days spanned'},
+    {n: tokens,      l:'tokens · one context'},
+  ];
+  hero.innerHTML='';
+  const inn = el('div','hero-in');
+  inn.appendChild(el('div','hero-eye','Offline · on-device · 0 bytes over the network'));
+  const t = document.createElement('h2'); t.className='hero-title';
+  t.innerHTML = 'I read <b>every commit</b> of your history in one pass — and found the mistakes you keep repeating.';
+  inn.appendChild(t);
+  const sw = el('div','hero-stats');
+  stats.forEach(s=>{
+    const d = el('div','stat'); const num = el('div','num');
+    num.dataset.to = s.n; num.textContent = /^\d+$/.test(String(s.n)) ? '0' : s.n;
+    d.appendChild(num); d.appendChild(el('div','lab', s.l)); sw.appendChild(d);
+  });
+  inn.appendChild(sw); hero.appendChild(inn);
+  requestAnimationFrame(()=>document.querySelectorAll('.stat .num').forEach(countUp));
+}
+function countUp(el){
+  const to = el.dataset.to; if(!/^\d+$/.test(String(to))) return;  // leave "37K" etc. as-is
+  const n = parseInt(to,10), dur=850, t0=performance.now();
+  (function step(t){ const k=Math.min(1,(t-t0)/dur); el.textContent=Math.round(n*(1-(1-k)*(1-k))); if(k<1) requestAnimationFrame(step); })(t0);
 }
 
 function renderMeta(m){
@@ -248,8 +306,9 @@ function renderTimeline(p, manifest){
     const span = el('div','tl-span'); span.style.left=a+'%'; span.style.width=Math.max(0,b-a)+'%';
     span.style.background = CATCOLOR(r.cat); track.appendChild(span);
     r.occ.forEach(o=>{
-      const dot = el('div','tl-dot'); dot.style.left=pos(o.date)+'%';
+      const dot = el('div','tl-dot'); const x=pos(o.date); dot.style.left=x+'%';
       dot.style.background = CATCOLOR(r.cat);
+      dot.style.animationDelay = (0.25 + x/100*1.1).toFixed(2)+'s';  // pop in left-to-right
       dot.title = `${o.date} · ${o.sha}`;
       track.appendChild(dot);
     });
