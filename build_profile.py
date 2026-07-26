@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -21,13 +22,24 @@ def _norm(s: str) -> str:
     return "".join(str(s).split())
 
 
+def _commit_date(repo: Path, sha: str) -> str:
+    r = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%ad",
+                        "--date=short", sha], capture_output=True, text=True)
+    return r.stdout.strip()
+
+
 def verify(profile: dict, repo: Path) -> dict:
-    """Drop any cited line not actually present in that commit, and any pattern
-    left with fewer than 2 grounded occurrences. This turns the 4B model's
-    imperfect recall into a hard guarantee: everything shown is real."""
+    """Two hard guarantees that turn the 4B model's imperfect recall into
+    something trustworthy:
+      1. grounding — every cited line must actually exist in that commit;
+      2. recurrence — a pattern must span 2+ DISTINCT commits on 2+ DISTINCT
+         dates, so three lines dumped in one commit (e.g. the initial commit)
+         never masquerade as a "mistake you keep making over time".
+    """
     diff_cache: dict[str, str] = {}
     kept_patterns = []
     dropped_occ = 0
+    dropped_patterns = []
     for pat in profile.get("patterns", []):
         kept = []
         for occ in pat.get("occurrences", []):
@@ -45,11 +57,16 @@ def verify(profile: dict, repo: Path) -> dict:
             else:
                 dropped_occ += 1
         pat["occurrences"] = kept
-        if len(kept) >= 2:
+        commits = {o.get("sha", "")[:10] for o in kept}
+        dates = {_commit_date(repo, s) for s in commits} - {""}
+        if len(commits) >= 2 and len(dates) >= 2:
             kept_patterns.append(pat)
+        else:
+            dropped_patterns.append(f"{pat.get('name','?')} ({len(commits)} commit/{len(dates)} date)")
     profile["patterns"] = kept_patterns
     profile["_verification"] = {"dropped_occurrences": dropped_occ,
-                                "verified_patterns": len(kept_patterns)}
+                                "verified_patterns": len(kept_patterns),
+                                "dropped_patterns": dropped_patterns}
     return profile
 
 
@@ -68,7 +85,22 @@ def main() -> None:
     ap.add_argument("--num-ctx", type=int, default=65536)
     ap.add_argument("--repo", default=_default_repo(),
                     help="Repo to verify cited lines against (defaults to manifest.json).")
+    ap.add_argument("--verify-only", action="store_true",
+                    help="Skip the model; re-verify an existing profile with current rules.")
     args = ap.parse_args()
+
+    if args.verify_only:
+        profile = json.loads(Path(args.out).read_text())
+        raw = len(profile.get("patterns", []))
+        profile = verify(profile, Path(args.repo).expanduser())
+        v = profile["_verification"]
+        Path(args.out).write_text(json.dumps(profile, indent=2, ensure_ascii=False))
+        print(f"re-verified: {raw} -> {v['verified_patterns']} patterns; "
+              f"dropped: {v['dropped_patterns']}")
+        for p in profile["patterns"]:
+            print(f"  [{p.get('category','?')}/{p.get('severity','?')}] {p['name']} "
+                  f"({len({o.get('sha') for o in p['occurrences']})} commits)")
+        return
 
     corpus = Path(args.corpus).read_text()
     approx_tokens = len(corpus) // 4

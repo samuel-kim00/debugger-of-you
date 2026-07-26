@@ -298,7 +298,7 @@ function renderTimeline(p, manifest){
 
   const rows = (p.patterns||[]).map(pat=>({
     name: pat.name, cat: CAT.includes(pat.category)?pat.category:'process',
-    occ: (pat.occurrences||[]).map(o=>{ const sha=parseOcc(o).sha; return {sha, date:dateFor(sha)}; })
+    occ: [...new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha))].map(sha=>({sha, date:dateFor(sha)}))
                               .filter(o=>o.date)
   })).filter(r=>r.occ.length);
   const all = rows.flatMap(r=>r.occ.map(o=>o.date));
@@ -368,7 +368,7 @@ function renderCards(p){
     const tags = el('div','tags');
     tags.appendChild(el('span','tag cat-'+cat, cat));
     if(pat.severity) tags.appendChild(el('span','tag sev-'+pat.severity, pat.severity+' severity'));
-    tags.appendChild(el('span','tag', (pat.occurrences||[]).length+' commits'));
+    tags.appendChild(el('span','tag', new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha)).size+' commits'));
     card.appendChild(tags);
     card.appendChild(el('p', null, pat.description||''));
     if(pat.evidence){
@@ -379,7 +379,7 @@ function renderCards(p){
       card.appendChild(el('div','fix-label','How to avoid it next time'));
       card.appendChild(el('div','fix', pat.fix));
     }
-    const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
+    const shas = [...new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha))];
     if(shas.length){
       const row = el('div','shas');
       shas.forEach(sha=>{
@@ -490,7 +490,7 @@ function openPattern(pat){
   // verified lines per sha — guaranteed present in that commit, so highlight is exact
   const lineFor = {};
   (pat.occurrences||[]).forEach(o=>{ const p=parseOcc(o); if(p.sha && p.line) (lineFor[p.sha]=lineFor[p.sha]||[]).push(p.line); });
-  const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
+  const shas = [...new Set((pat.occurrences||[]).map(o=>parseOcc(o).sha))];
   body.innerHTML='';
   shas.forEach(sha=>{
     const occ = el('div','occ');
