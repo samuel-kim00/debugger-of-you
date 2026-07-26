@@ -150,21 +150,24 @@
   .viewbtn { margin-top: 20px; background: #12183a; color: #cdd7ff; font-size: 14px; }
   .modal-bg { position: fixed; inset: 0; background: rgba(10,14,25,.55); z-index: 60; display: none; }
   .modal-bg.open { display: block; }
-  .panel { position: fixed; top: 0; right: 0; height: 100%; width: min(820px, 96vw);
+  .panel { position: fixed; top: 0; right: 0; height: 100%; width: min(1680px, 98vw);
     background: #0e1320; color: #d6dbe6; z-index: 61; transform: translateX(100%);
     transition: transform .28s ease; display: flex; flex-direction: column;
     box-shadow: -12px 0 48px rgba(0,0,0,.45); }
   .panel.open { transform: translateX(0); }
-  .panel-head { padding: 22px 26px 18px; border-bottom: 1px solid #202840; }
+  .panel-head { padding: 20px 26px 16px; border-bottom: 1px solid #202840; flex: 0 0 auto; }
   .panel-head h3 { margin: 0; font-size: 18px; color: #fff; padding-right: 40px; line-height: 1.35; }
-  .panel-head .psub { color: #99a2c0; font-size: 13.5px; margin-top: 8px; line-height: 1.6; }
-  .panel-head .x { position: absolute; top: 20px; right: 22px; cursor: pointer; color: #8a93a3;
+  .panel-head .psub { color: #99a2c0; font-size: 13px; margin-top: 6px; line-height: 1.55; }
+  .panel-head .x { position: absolute; top: 18px; right: 22px; cursor: pointer; color: #8a93a3;
     font-size: 26px; background: none; border: 0; line-height: 1; }
-  .panel-body { overflow: auto; padding: 20px 26px 60px; }
-  .occ { margin-bottom: 26px; }
-  .occ-h { font-family: ui-monospace, monospace; font-size: 12.5px; color: #9db4ff; margin-bottom: 8px; }
+  .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: row; gap: 16px;
+    overflow-x: auto; overflow-y: hidden; padding: 18px 22px 22px; }
+  .occ { flex: 0 0 400px; display: flex; flex-direction: column; min-height: 0; margin: 0; }
+  .occ-h { font-family: ui-monospace, monospace; font-size: 12px; color: #9db4ff; margin-bottom: 8px;
+    flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .occ-h .subj { color: #7b8398; }
-  .code { background: #0a0e17; border: 1px solid #1b2233; border-radius: 10px; overflow-x: auto; padding: 8px 0; }
+  .code { flex: 1; min-height: 0; background: #0a0e17; border: 1px solid #1b2233; border-radius: 10px;
+    overflow: auto; padding: 8px 0; }
   .code .ln { display: block; padding: 1px 16px; font-family: ui-monospace, monospace;
     font-size: 12px; line-height: 1.65; white-space: pre; color: #96a0b4; }
   .code .ln.add { color: #86eeb8; }
@@ -494,6 +497,8 @@ function openPattern(pat){
     fetch('/api/commit?sha='+encodeURIComponent(sha)).then(r=>r.json()).then(d=>{
       if(d.subject) h.innerHTML = sha + ' <span class="subj">· '+escapeHtml(d.date||'')+' · '+escapeHtml(d.subject)+'</span>';
       renderCode(code, d.diff, (snips[sha.slice(0,10)]||[]).concat(pooled));
+      const hot = code.querySelector('.ln.hot');   // scroll the repeat into view
+      if(hot) code.scrollTop = Math.max(0, hot.offsetTop - code.clientHeight/2);
     }).catch(()=>{ code.innerHTML='<span class="ln">needs the running server (python3 server.py)</span>'; });
   });
 }
