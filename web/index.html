@@ -338,7 +338,7 @@ document.getElementById('run').addEventListener('click', async ()=>{
   btn.disabled=false; btn.textContent='Check against my history';
 });
 
-function renderMatches(data){
+function renderMatches(data, demoCommit){
   const res = document.getElementById('results'); res.innerHTML='';
   if(data.verdict) res.appendChild(el('div','hint', data.verdict));
   if(!(data.matches||[]).length){ res.appendChild(el('div','clean','✓ No known pattern of yours matched this diff.')); return; }
@@ -352,10 +352,18 @@ function renderMatches(data){
       d.appendChild(el('div','shas', 'you did this before: '+m.related_shas.join('   ')));
     res.appendChild(d);
   });
-  const cap = el('div','capstone');
-  const btn = el('button','', 'Write a history-aware commit (Gemma function call)');
-  cap.appendChild(btn); res.appendChild(cap);
-  btn.addEventListener('click', ()=>proposeCommit(data.matches, cap, btn));
+  const cap = el('div','capstone'); res.appendChild(cap);
+  if(demoCommit){  // handoff mode: show the already-committed state
+    cap.appendChild(el('div','conf','● execute_git_commit(message) called by Gemma 4'));
+    const box = el('pre','commitmsg'); box.textContent = demoCommit.message; cap.appendChild(box);
+    const r = demoCommit.result || {};
+    cap.appendChild(el('div','clean','✓ committed '+(r.sha||'')+' (scratch demo repo)'));
+    if(r.log) cap.appendChild(el('div','shas', r.log));
+  } else {
+    const btn = el('button','', 'Write a history-aware commit (Gemma function call)');
+    cap.appendChild(btn);
+    btn.addEventListener('click', ()=>proposeCommit(data.matches, cap, btn));
+  }
 }
 
 async function proposeCommit(matches, cap, btn){
@@ -381,6 +389,12 @@ async function proposeCommit(matches, cap, btn){
 }
 
 loadProfile();
+
+// design-handoff mode: if real Act 2/3 outputs are inlined, render them too
+if(window.__DEMO_LIVE__){
+  if(window.__DEMO_DIFF__) document.getElementById('diff').value = window.__DEMO_DIFF__;
+  renderMatches(window.__DEMO_LIVE__, {message: window.__DEMO_COMMIT__, result: window.__DEMO_COMMIT_RESULT__});
+}
 </script>
 </body>
 </html>
