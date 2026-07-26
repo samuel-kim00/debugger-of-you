@@ -11,7 +11,7 @@
     --accent: #3b5bff; --bug: #e5484d; --style: #cf8a00;
     --arch: #0e9f6e; --process: #7c3aed;
     --shadow: 0 1px 3px rgba(20,30,60,.06), 0 4px 16px rgba(20,30,60,.05);
-    --pad: 44px; --maxw: 1120px;
+    --pad: 44px; --maxw: 1440px;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -36,21 +36,25 @@
   /* recurrence timeline */
   .tl { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
     padding: 18px 20px 10px; margin: 6px 0 8px; }
-  .tl-axis { position: relative; height: 20px; margin-left: 230px; border-bottom: 1px solid var(--line); }
+  .tl-axis { position: relative; height: 18px; margin: 0 0 6px; border-bottom: 1px solid var(--line); }
   .tl-axis span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--faint); top: 2px; }
-  .tl-row { display: flex; align-items: center; height: 44px; }
-  .tl-label { width: 230px; padding-right: 16px; font-size: 12.5px; font-weight: 600;
-    text-align: right; line-height: 1.25; overflow: hidden;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .tl-track { position: relative; flex: 1; height: 100%; }
-  .tl-span { position: absolute; top: 50%; height: 3px; border-radius: 2px; opacity: .35; transform: translateY(-50%); }
-  .tl-dot { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%;
-    transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06); cursor: default; }
-  .tl-legend { font-size: 12px; color: var(--dim); margin: 8px 0 2px 230px; }
+  .tl-item { margin: 14px 0 4px; }
+  .tl-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;
+    margin-bottom: 8px; line-height: 1.3; }
+  .tl-swatch { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+  .tl-track { position: relative; height: 20px; }
+  .tl-base { position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--line); transform: translateY(-50%); }
+  .tl-span { position: absolute; top: 50%; height: 4px; border-radius: 2px; opacity: .4; transform: translateY(-50%); }
+  .tl-dot { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%;
+    transform: translate(-50%,-50%); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+  .tl-legend { font-size: 12px; color: var(--dim); margin: 12px 0 2px; }
 
-  /* pattern cards — one column, roomy */
+  /* pattern cards — responsive grid, fills wide screens */
+  #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(540px, 1fr));
+    gap: 16px; align-items: start; }
+  @media (max-width: 640px){ #cards { grid-template-columns: 1fr; } }
   .card { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
-    border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; border-left: 5px solid var(--accent); }
+    border-radius: 14px; padding: 22px 24px; border-left: 5px solid var(--accent); }
   .card.bug { border-left-color: var(--bug); }
   .card.style { border-left-color: var(--style); }
   .card.architecture { border-left-color: var(--arch); }
@@ -60,6 +64,13 @@
   .tag { font-size: 12px; padding: 3px 10px; border-radius: 7px; background: #eef1f6; color: var(--dim); font-weight: 600; }
   .tag.sev-high { background: #fdecec; color: var(--bug); }
   .tag.sev-medium { background: #fbf3e0; color: var(--style); }
+  .tag.cat-bug { background: #fdecec; color: var(--bug); }
+  .tag.cat-style { background: #fbf3e0; color: var(--style); }
+  .tag.cat-architecture { background: #e7f7ef; color: var(--arch); }
+  .tag.cat-process { background: #efe9fb; color: var(--process); }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--dim); margin: 12px 0 0; }
+  .legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 11px; height: 11px; border-radius: 50%; }
   .card p { margin: 10px 0; font-size: 15.5px; color: #333a46; max-width: 78ch; }
   .ev-label { font-size: 12px; font-weight: 700; color: var(--faint); text-transform: uppercase;
     letter-spacing: .8px; margin-top: 14px; margin-bottom: 2px; }
@@ -216,12 +227,16 @@ function renderTimeline(p, manifest){
   wrap.appendChild(axis);
 
   rows.forEach(r=>{
-    const row = el('div','tl-row');
-    row.appendChild(el('div','tl-label', r.name));
+    const item = el('div','tl-item');
+    const name = el('div','tl-name');
+    const sw = el('span','tl-swatch'); sw.style.background = CATCOLOR(r.cat); name.appendChild(sw);
+    name.appendChild(el('span', null, r.name));   // full name, wraps, never truncated
+    item.appendChild(name);
     const track = el('div','tl-track');
+    track.appendChild(el('div','tl-base'));
     const dates = r.occ.map(o=>o.date).sort();
     const a=pos(dates[0]), b=pos(dates[dates.length-1]);
-    const span = el('div','tl-span'); span.style.left=a+'%'; span.style.width=(b-a)+'%';
+    const span = el('div','tl-span'); span.style.left=a+'%'; span.style.width=Math.max(0,b-a)+'%';
     span.style.background = CATCOLOR(r.cat); track.appendChild(span);
     r.occ.forEach(o=>{
       const dot = el('div','tl-dot'); dot.style.left=pos(o.date)+'%';
@@ -229,9 +244,18 @@ function renderTimeline(p, manifest){
       dot.title = `${o.date} · ${o.sha}`;
       track.appendChild(dot);
     });
-    row.appendChild(track); wrap.appendChild(row);
+    item.appendChild(track); wrap.appendChild(item);
   });
-  wrap.appendChild(el('div','tl-legend','each dot = a commit where this pattern appeared'));
+  // legend: what the border/dot colors mean
+  const cats = [...new Set(rows.map(r=>r.cat))];
+  const legend = el('div','legend');
+  cats.forEach(c=>{
+    const k = el('span','k');
+    const sw = el('span','sw'); sw.style.background = CATCOLOR(c); k.appendChild(sw);
+    k.appendChild(el('span', null, c)); legend.appendChild(k);
+  });
+  const note = el('span','k'); note.appendChild(el('span', null, '· each dot = a commit where the pattern appeared')); legend.appendChild(note);
+  wrap.appendChild(legend);
 }
 
 function renderCards(p){
@@ -241,7 +265,7 @@ function renderCards(p){
     const card = el('div','card '+cat);
     card.appendChild(el('h3', null, pat.name));
     const tags = el('div','tags');
-    tags.appendChild(el('span','tag', cat));
+    tags.appendChild(el('span','tag cat-'+cat, cat));
     if(pat.severity) tags.appendChild(el('span','tag sev-'+pat.severity, pat.severity+' severity'));
     tags.appendChild(el('span','tag', (pat.occurrences||[]).length+' commits'));
     card.appendChild(tags);
