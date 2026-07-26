@@ -145,6 +145,31 @@
   .commitmsg { background: #f4f6f9; border: 1px solid var(--line); border-radius: 10px;
     padding: 14px 16px; margin: 12px 0; font-family: ui-monospace, monospace; font-size: 13px;
     color: #2a3140; white-space: pre-wrap; overflow-x: auto; line-height: 1.55; }
+
+  /* "see the repeat in code" side panel */
+  .viewbtn { margin-top: 20px; background: #12183a; color: #cdd7ff; font-size: 14px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(10,14,25,.55); z-index: 60; display: none; }
+  .modal-bg.open { display: block; }
+  .panel { position: fixed; top: 0; right: 0; height: 100%; width: min(820px, 96vw);
+    background: #0e1320; color: #d6dbe6; z-index: 61; transform: translateX(100%);
+    transition: transform .28s ease; display: flex; flex-direction: column;
+    box-shadow: -12px 0 48px rgba(0,0,0,.45); }
+  .panel.open { transform: translateX(0); }
+  .panel-head { padding: 22px 26px 18px; border-bottom: 1px solid #202840; }
+  .panel-head h3 { margin: 0; font-size: 18px; color: #fff; padding-right: 40px; line-height: 1.35; }
+  .panel-head .psub { color: #99a2c0; font-size: 13.5px; margin-top: 8px; line-height: 1.6; }
+  .panel-head .x { position: absolute; top: 20px; right: 22px; cursor: pointer; color: #8a93a3;
+    font-size: 26px; background: none; border: 0; line-height: 1; }
+  .panel-body { overflow: auto; padding: 20px 26px 60px; }
+  .occ { margin-bottom: 26px; }
+  .occ-h { font-family: ui-monospace, monospace; font-size: 12.5px; color: #9db4ff; margin-bottom: 8px; }
+  .occ-h .subj { color: #7b8398; }
+  .code { background: #0a0e17; border: 1px solid #1b2233; border-radius: 10px; overflow-x: auto; padding: 8px 0; }
+  .code .ln { display: block; padding: 1px 16px; font-family: ui-monospace, monospace;
+    font-size: 12px; line-height: 1.65; white-space: pre; color: #96a0b4; }
+  .code .ln.add { color: #86eeb8; }
+  .code .ln.del { color: #ff9aa2; }
+  .code .ln.hot { background: rgba(255,209,102,.16); box-shadow: inset 3px 0 0 #ffd166; color: #ffe6a8; }
 </style>
 </head>
 <body>
@@ -360,6 +385,11 @@ function renderCards(p){
     }
     if(pat.first_seen||pat.last_seen)
       card.appendChild(el('div','span', `first seen ${pat.first_seen||'?'}  →  last seen ${pat.last_seen||'?'}`));
+    if(shas.length){
+      const view = el('button','viewbtn', `See this repeat across ${shas.length} commits →`);
+      view.addEventListener('click', ()=>openPattern(pat));
+      card.appendChild(view);
+    }
     c.appendChild(card);
   });
   if(!(p.patterns||[]).length) c.innerHTML='<div class="hint">No recurring patterns found.</div>';
@@ -388,6 +418,85 @@ function renderSub(p){
   }
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// side panel: show one pattern's actual code across every commit, problem lines lit
+let _modal;
+function ensureModal(){
+  if(_modal) return _modal;
+  const bg = document.createElement('div'); bg.className='modal-bg';
+  const panel = document.createElement('div'); panel.className='panel';
+  panel.innerHTML = '<div class="panel-head"><button class="x">&times;</button>'
+    + '<h3></h3><div class="psub"></div></div><div class="panel-body"></div>';
+  bg.appendChild(panel); document.body.appendChild(bg);
+  const close = ()=>{ bg.classList.remove('open'); panel.classList.remove('open'); };
+  bg.addEventListener('click', e=>{ if(e.target===bg) close(); });
+  panel.querySelector('.x').addEventListener('click', close);
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') close(); });
+  _modal = {bg, panel}; return _modal;
+}
+// pull the code snippets the model quoted per sha, to know which lines to light up
+function evidenceSnippets(ev){
+  const map = {}; if(!ev) return map;
+  const clean = String(ev);
+  // find each "<sha>:" or "**`<sha>`**:" marker (start of that commit's evidence)
+  const re = /(?:^|[\s\n`*(])([0-9a-fA-F]{7,40})`?\**\s*:/g;
+  const marks = []; let m;
+  while((m = re.exec(clean))) marks.push({ sha: m[1].slice(0,10), start: m.index, from: re.lastIndex });
+  marks.forEach((mk, i)=>{
+    const seg = clean.slice(mk.from, i+1 < marks.length ? marks[i+1].start : clean.length);
+    const codes = [...seg.matchAll(/`([^`]+)`/g)].map(x=>x[1])
+      .filter(c => c.length > 5 && /[=/([.\]]/.test(c));   // real code, not a bare sha
+    if(codes.length) map[mk.sha] = (map[mk.sha]||[]).concat(codes);
+  });
+  return map;
+}
+// the model paraphrases evidence, so match on whitespace-insensitive substring
+// OR shared identifiers (variable names) rather than exact text.
+function hotLine(line, snippets){
+  const L = line.replace(/\s+/g,'');
+  for(const s of snippets||[]){
+    const S = s.replace(/\s+/g,'');
+    if(S.length > 6 && L.indexOf(S) !== -1) return true;
+    const toks = [...new Set((s.match(/[A-Za-z_]\w{3,}/g)||[]))];
+    const shared = toks.filter(t => line.indexOf(t) !== -1);
+    if(shared.length >= 2) return true;
+    if(shared.length === 1 && shared[0].length >= 7) return true;   // one distinctive name
+  }
+  return false;
+}
+function renderCode(container, diff, snippets){
+  container.innerHTML='';
+  (diff||'').split('\n').forEach(line=>{
+    const ln = document.createElement('span'); ln.className='ln';
+    if(line.startsWith('+') && !line.startsWith('+++')) ln.classList.add('add');
+    else if(line.startsWith('-') && !line.startsWith('---')) ln.classList.add('del');
+    if(hotLine(line, snippets)) ln.classList.add('hot');
+    ln.textContent = line || ' ';
+    container.appendChild(ln);
+  });
+}
+function openPattern(pat){
+  const {bg, panel} = ensureModal();
+  panel.querySelector('h3').textContent = pat.name;
+  panel.querySelector('.psub').textContent = pat.description || '';
+  const body = panel.querySelector('.panel-body'); body.innerHTML = '<div class="hint" style="color:#8a93a3">loading your code…</div>';
+  bg.classList.add('open'); panel.classList.add('open');
+  const snips = evidenceSnippets(pat.evidence);
+  const pooled = Object.values(snips).flat();   // whole-pattern vocabulary, not per-sha
+  const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
+  body.innerHTML='';
+  shas.forEach(sha=>{
+    const occ = el('div','occ');
+    const h = el('div','occ-h'); h.textContent = sha; occ.appendChild(h);
+    const code = document.createElement('div'); code.className='code';
+    code.innerHTML = '<span class="ln">…</span>'; occ.appendChild(code);
+    body.appendChild(occ);
+    fetch('/api/commit?sha='+encodeURIComponent(sha)).then(r=>r.json()).then(d=>{
+      if(d.subject) h.innerHTML = sha + ' <span class="subj">· '+escapeHtml(d.date||'')+' · '+escapeHtml(d.subject)+'</span>';
+      renderCode(code, d.diff, (snips[sha.slice(0,10)]||[]).concat(pooled));
+    }).catch(()=>{ code.innerHTML='<span class="ln">needs the running server (python3 server.py)</span>'; });
+  });
+}
 
 // click a sha chip -> fetch and toggle the real commit diff (needs the backend)
 async function toggleDiff(card, sha, chip){

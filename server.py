@@ -60,7 +60,14 @@ class Handler(BaseHTTPRequestHandler):
             if not sha or not repo or not (repo / ".git").exists():
                 return self._json(404, {"error": "no repo or sha"})
             diff = prepare_history.filtered_diff(repo, sha)
-            return self._json(200, {"sha": sha, "diff": diff[:14000] or "(no source diff)"})
+            subject = prepare_history.run(
+                ["git", "log", "-1", "--format=%s%n%ad", "--date=short", sha], repo).strip().split("\n")
+            return self._json(200, {
+                "sha": sha,
+                "subject": subject[0] if subject else "",
+                "date": subject[1] if len(subject) > 1 else "",
+                "diff": diff[:14000] or "(no source diff)",
+            })
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
