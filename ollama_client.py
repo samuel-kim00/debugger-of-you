@@ -47,6 +47,36 @@ def generate(
     return payload.get("response", "")
 
 
+def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    *,
+    model: str = DEFAULT_MODEL,
+    num_ctx: int = 16384,
+    host: str = DEFAULT_HOST,
+    temperature: float = 0.2,
+    timeout: int = 600,
+) -> dict:
+    """Native function-calling chat. Returns the assistant message dict,
+    which carries `tool_calls` when the model decides to call a tool.
+    """
+    body = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "stream": False,
+        "options": {"num_ctx": num_ctx, "temperature": temperature},
+    }
+    req = urllib.request.Request(
+        f"{host}/api/chat",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode())
+    return payload.get("message", {})
+
+
 def generate_json(prompt: str, schema: dict, **kwargs) -> dict:
     """generate() constrained to a JSON schema, parsed into a dict."""
     raw = generate(prompt, fmt=schema, **kwargs)

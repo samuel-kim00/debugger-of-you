@@ -71,6 +71,11 @@
   .match .conf { font-size: 11px; color: var(--dim); text-transform: uppercase; }
   .clean { color: var(--ok); padding: 14px 0; }
   .muted { color: var(--dim); }
+  .capstone { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .capstone button { background: var(--arch); }
+  .commitmsg { background: #0b0e14; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; margin: 10px 0; font-family: ui-monospace, monospace; font-size: 12px;
+    color: #cfd4de; white-space: pre-wrap; overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -188,6 +193,33 @@ function renderMatches(data){
       d.appendChild(el('div','shas', 'you did this before: '+m.related_shas.join('  ')));
     res.appendChild(d);
   });
+  // Capstone: let Gemma write a history-aware commit via native function calling.
+  const cap = el('div','capstone');
+  const btn = el('button','', 'Write a history-aware commit (Gemma function call)');
+  cap.appendChild(btn); res.appendChild(cap);
+  btn.addEventListener('click', ()=>proposeCommit(data.matches, cap, btn));
+}
+
+async function proposeCommit(matches, cap, btn){
+  const diff = document.getElementById('diff').value;
+  btn.disabled=true; btn.textContent='Gemma is calling execute_git_commit…';
+  try{
+    const r = await fetch('/api/propose-commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({diff,matches})});
+    const d = await r.json();
+    btn.remove();
+    if(d.error){ cap.appendChild(el('div','hint','Error: '+d.error)); return; }
+    cap.appendChild(el('div','conf','● execute_git_commit(message) called by Gemma 4'));
+    const box = el('pre','commitmsg'); box.textContent = d.message; cap.appendChild(box);
+    const approve = el('button','', 'Approve & commit'); cap.appendChild(approve);
+    approve.addEventListener('click', async ()=>{
+      approve.disabled=true; approve.textContent='Committing…';
+      const rr = await fetch('/api/execute-commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:d.message})});
+      const res2 = await rr.json();
+      approve.remove();
+      cap.appendChild(el('div','clean','✓ committed '+(res2.sha||'')+' (scratch demo repo)'));
+      if(res2.log) cap.appendChild(el('div','shas', res2.log));
+    });
+  }catch(e){ btn.disabled=false; btn.textContent='Write a history-aware commit (Gemma function call)'; cap.appendChild(el('div','hint','failed: '+e)); }
 }
 
 loadProfile();

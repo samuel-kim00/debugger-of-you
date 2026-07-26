@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import live_check
+import commit_capstone
 
 ROOT = Path(__file__).parent
 PORT = 8777
@@ -47,16 +48,25 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
-        if self.path != "/api/live-check":
-            return self._json(404, {"error": "not found"})
         length = int(self.headers.get("Content-Length", 0))
         try:
-            req = json.loads(self.rfile.read(length).decode())
-            diff = req.get("diff", "")
-            if not diff.strip():
-                return self._json(400, {"error": "empty diff"})
-            result = live_check.check_diff(diff, str(ROOT / "developer_profile.json"))
-            self._json(200, result)
+            req = json.loads(self.rfile.read(length).decode()) if length else {}
+        except json.JSONDecodeError:
+            return self._json(400, {"error": "bad json"})
+        try:
+            if self.path == "/api/live-check":
+                diff = req.get("diff", "")
+                if not diff.strip():
+                    return self._json(400, {"error": "empty diff"})
+                return self._json(200, live_check.check_diff(diff, str(ROOT / "developer_profile.json")))
+            if self.path == "/api/propose-commit":
+                # Gemma 4 native function call: history-aware commit message.
+                return self._json(200, commit_capstone.propose_commit(
+                    req.get("diff", ""), req.get("matches", [])))
+            if self.path == "/api/execute-commit":
+                # Runs the model's proposed commit in a scratch repo (never the real project).
+                return self._json(200, commit_capstone.apply_commit(req.get("message", "")))
+            self._json(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001 - surface any failure to the UI
             self._json(500, {"error": str(e)})
 
