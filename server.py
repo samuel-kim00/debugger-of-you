@@ -66,7 +66,7 @@ class Handler(BaseHTTPRequestHandler):
                 "sha": sha,
                 "subject": subject[0] if subject else "",
                 "date": subject[1] if len(subject) > 1 else "",
-                "diff": diff[:14000] or "(no source diff)",
+                "diff": diff[:40000] or "(no source diff)",
             })
         self._json(404, {"error": "not found"})
 

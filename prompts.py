@@ -22,13 +22,24 @@ PROFILE_SCHEMA = {
                         "type": "string",
                         "enum": ["low", "medium", "high"],
                     },
-                    "occurrences": {"type": "array", "items": {"type": "string"}},
+                    "occurrences": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "sha": {"type": "string"},
+                                "file": {"type": "string"},
+                                "line": {"type": "string"},
+                            },
+                            "required": ["sha", "line"],
+                        },
+                    },
                     "evidence": {"type": "string"},
                     "fix": {"type": "string"},
                     "first_seen": {"type": "string"},
                     "last_seen": {"type": "string"},
                 },
-                "required": ["name", "description", "category", "severity", "occurrences", "evidence", "fix"],
+                "required": ["name", "description", "category", "severity", "occurrences", "fix"],
             },
         },
         "style_drift": {
@@ -76,8 +87,12 @@ Focus on:
    "data handling" pattern. For each pattern give:
      - severity: "high" if it can crash or corrupt data and recurs often; \
        "medium" if it causes wrong results or rework; "low" if cosmetic.
-     - occurrences: the commit shas where it appears (2+).
-     - evidence: concrete quoted lines from the diffs.
+     - occurrences: 2 or more items. Each has the commit `sha`, the `file`, and \
+       the EXACT offending `line` copied VERBATIM from that commit's diff. Do NOT \
+       paraphrase, reword, or invent the line — copy the real characters exactly \
+       as they appear (an added `+` line). Every line is checked against the real \
+       git history and DROPPED if not found, so only cite lines you truly see.
+     - evidence: one short sentence summarizing the pattern (not quoted code).
      - fix: ONE concrete, preventive rule the developer can apply next time \
        (e.g. "add a safe_div(a,b) helper and use it for every ratio"), not vague \
        advice.

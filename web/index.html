@@ -279,10 +279,13 @@ function renderMeta(m){
 }
 
 // parse "sha | 2026-03-31 | subject" -> {sha,date,subject}
-function parseOcc(s){
-  const dm = String(s).match(/(\d{4}-\d{2}-\d{2})/);
-  const sha = String(s).trim().split(/[\s|]/)[0];
-  return { sha, date: dm? dm[1]: null, raw: s };
+function parseOcc(o){
+  if(o && typeof o === 'object'){
+    return { sha: String(o.sha||'').trim().slice(0,10), date: null, line: o.line||'', file: o.file||'', raw: o };
+  }
+  const dm = String(o).match(/(\d{4}-\d{2}-\d{2})/);
+  const sha = String(o).trim().split(/[\s|]/)[0];
+  return { sha, date: dm? dm[1]: null, line: '', file: '', raw: o };
 }
 function daysBetween(a,b){ return (new Date(b)-new Date(a))/86400000; }
 
@@ -484,8 +487,9 @@ function openPattern(pat){
   panel.querySelector('.psub').textContent = pat.description || '';
   const body = panel.querySelector('.panel-body'); body.innerHTML = '<div class="hint" style="color:#8a93a3">loading your code…</div>';
   bg.classList.add('open'); panel.classList.add('open');
-  const snips = evidenceSnippets(pat.evidence);
-  const pooled = Object.values(snips).flat();   // whole-pattern vocabulary, not per-sha
+  // verified lines per sha — guaranteed present in that commit, so highlight is exact
+  const lineFor = {};
+  (pat.occurrences||[]).forEach(o=>{ const p=parseOcc(o); if(p.sha && p.line) (lineFor[p.sha]=lineFor[p.sha]||[]).push(p.line); });
   const shas = (pat.occurrences||[]).map(o=>parseOcc(o).sha);
   body.innerHTML='';
   shas.forEach(sha=>{
@@ -496,7 +500,7 @@ function openPattern(pat){
     body.appendChild(occ);
     fetch('/api/commit?sha='+encodeURIComponent(sha)).then(r=>r.json()).then(d=>{
       if(d.subject) h.innerHTML = sha + ' <span class="subj">· '+escapeHtml(d.date||'')+' · '+escapeHtml(d.subject)+'</span>';
-      renderCode(code, d.diff, (snips[sha.slice(0,10)]||[]).concat(pooled));
+      renderCode(code, d.diff, lineFor[sha.slice(0,10)]||[]);
       const hot = code.querySelector('.ln.hot');   // scroll the repeat into view
       if(hot) code.scrollTop = Math.max(0, hot.offsetTop - code.clientHeight/2);
     }).catch(()=>{ code.innerHTML='<span class="ln">needs the running server (python3 server.py)</span>'; });
